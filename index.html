@@ -2,9 +2,16 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark light">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Blackmen">
 <title>Blackmen Barbería</title>
 <link rel="icon" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
@@ -12,6 +19,56 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide-react@0.383.0/dist/umd/lucide-react.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
 <style>html,body{background:#000;margin:0}</style>
+<style id="mobile-ux">
+/* ===== Ajustes para celulares (Android / iPhone). Solo se agrega, no se cambia el diseño ===== */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { overscroll-behavior-y: contain; }           /* evita recargar sin querer al deslizar hacia abajo (Android) */
+* { -webkit-tap-highlight-color: transparent; }          /* sin destello gris al tocar */
+button, a, select, input, label, summary, [role="button"] { touch-action: manipulation; } /* sin zoom por doble toque */
+button, [role="button"] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.overflow-x-auto, .overflow-y-auto { -webkit-overflow-scrolling: touch; }
+
+/* Alto real de pantalla (la barra del navegador en iPhone/Android ya no tapa contenido) */
+@supports (height: 100dvh) {
+  body .min-h-screen { min-height: 100dvh !important; }
+  body .light-area { min-height: calc(100dvh - 83px) !important; }
+  body .max-h-\[90vh\] { max-height: 90dvh !important; }
+}
+
+/* Zonas seguras (notch / barra inferior del iPhone) */
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+nav.fixed.bottom-0 { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+@media (orientation: landscape) and (max-height: 500px) {
+  .fixed.inset-0 { padding-left: max(.75rem, env(safe-area-inset-left)) !important; padding-right: max(.75rem, env(safe-area-inset-right)) !important; }
+}
+
+/* Ventanas emergentes: scroll interno, sin arrastrar la página de atrás */
+.fixed.inset-0 { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.fixed.inset-0 > div { overscroll-behavior: contain; }
+body:has(.fixed.inset-0) { overflow: hidden; }
+
+/* Campos de formulario */
+input, select, textarea { scroll-margin-top: 96px; scroll-margin-bottom: 120px; max-width: 100%; min-width: 0; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="date"]):not([type="time"]), textarea { -webkit-appearance: none; appearance: none; }
+input[type="date"], input[type="time"] { min-height: 40px; }
+input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value { text-align: left; }
+
+@media (hover: none) and (pointer: coarse) {
+  /* 16px evita el zoom automático de iPhone al tocar un campo (también en horizontal y tablets) */
+  input, select, textarea { font-size: 16px !important; }
+  /* Área de toque más grande sin cambiar el tamaño visible de los botones */
+  button:not(:disabled):not(.absolute):not(.fixed):not(.sticky) { position: relative; }
+  button:not(:disabled)::before { content: ''; position: absolute; top: -6px; bottom: -6px; left: -4px; right: -4px; }
+  label.cursor-pointer { min-height: 40px; }
+  select { min-height: 44px; }
+}
+
+/* Al escribir, el menú inferior se oculta para no quedar sobre el teclado */
+@media (max-width: 767px) {
+  body:has(input:focus:not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea:focus, select:focus) nav.fixed.bottom-0 { display: none; }
+}
+</style>
 </head>
 <body>
 <div id="root"></div>
