@@ -409,27 +409,12 @@ const Logo = ({ className = 'h-12' }) => {
 const PAL = ['#d4af37', '#10b981', '#3b82f6', '#ef4444', '#a855f7', '#f97316', '#14b8a6', '#eab308'];
 const short = (n) => n >= 1e6 ? (n / 1e6).toFixed(1).replace('.0', '') + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n));
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-const SPAL = ['#d4af37', '#ef4444', '#3b82f6', '#10b981', '#a855f7', '#f97316', '#14b8a6', '#94a3b8'];
+const SPAL = ['#ef4444', '#3b82f6', '#10b981', '#ffffff', '#d4af37', '#a855f7', '#f97316', '#14b8a6', '#ec4899', '#64748b', '#9ca3af']; // rojo, azul, verde, blanco, dorado... (último = Otros)
 const Avatar = ({ src, name, size = 40 }) => (
   <span className="inline-flex items-center justify-center rounded-full overflow-hidden shrink-0 bg-black border-2 border-[#d4af37] text-[#d4af37] font-bold" style={{ width: size, height: size, fontSize: size * 0.4 }}>
     {src ? <img src={src} alt={name} className="w-full h-full object-cover" /> : (name || '?').trim().charAt(0).toUpperCase()}
   </span>
 );
-const PAGE_HELP = {
-  dashboard: ['Resumen del día', 'Acá ves cómo va la barbería hoy: turnos, ingresos y avisos importantes. Se actualiza solo, no hace falta cargar nada.'],
-  historial: ['Agenda y reservas', 'Elegí un día y un horario libre para anotar un turno. Tocá un turno para marcarlo como completado, cancelado o ausente. Los turnos completados suman visitas al cliente.'],
-  clientes: ['Tus clientes', 'Cada cliente tiene su ficha con teléfono, visitas, total gastado y última visita. Tocá "Cumpleañeros" para ver quién cumple este mes y mandarle un saludo por WhatsApp.'],
-  servicios: ['Servicios y precios', 'Lo que ofrecés y cuánto cuesta. Si un servicio está en rojo (Suspendido) no aparece al reservar ni al cobrar, pero tampoco se borra.'],
-  equipo: ['Equipo de barberos', 'Tocá a cada barbero para ver cuántos clientes atendió, cuánto produjo y cuánto le corresponde de comisión. Cambiá el período arriba y sacá un reporte para imprimir.'],
-  mercaderia: ['Ventas de productos', 'Registrá lo que se vende a clientes y lo que consumen los barberos (eso se descuenta de sus ganancias). Arriba ves lo vendido hoy.'],
-  inventario: ['Inventario', 'Lista de productos con foto, stock y precio. Si el stock baja del mínimo se marca en rojo. Un producto suspendido no se puede vender.'],
-  pagos: ['Caja', 'Elegí un día para ver cuánta plata entró y salió. Al cerrar, contá el efectivo y escribilo en el arqueo: el sistema te dice si cuadra, sobra o falta.'],
-  gastos: ['Gastos', 'Anotá cada gasto (alquiler, luz, insumos…). Arriba ves el total de la semana, el mes y el año.'],
-  finanzas: ['Finanzas', 'Compara lo que ingresó contra lo que se gastó y te muestra el resultado del período elegido.'],
-  estadisticas: ['Reportes', 'Gráficos para entender el negocio: cuánto facturás, cuánto gastás y cuánto ganás. Usá las pestañas: Resumen, Cierre, Comparación, Servicios y Barberos.'],
-  misganancias: ['Mis ganancias', 'Tu resumen personal: clientes atendidos, tu comisión, tus consumos y el avance de tu meta semanal.'],
-  config: ['Configuración', 'Horarios de atención, usuarios y copia de seguridad. Descargá una copia de vez en cuando para no perder tus datos.'],
-};
 const readProductImg = (file) => new Promise((res) => {
   const r = new FileReader();
   r.onload = () => {
@@ -445,24 +430,37 @@ const readProductImg = (file) => new Promise((res) => {
   };
   r.readAsDataURL(file);
 });
+const arcPath = (cx, cy, r0, r1, a0, a1) => {
+  const f = Math.min(a1 - a0, Math.PI * 2 - 0.0001), e = a0 + f, L = f > Math.PI ? 1 : 0;
+  const pt = (r, a) => (cx + r * Math.cos(a)).toFixed(3) + ' ' + (cy + r * Math.sin(a)).toFixed(3);
+  if (r0 <= 0) return `M${cx} ${cy} L${pt(r1, a0)} A${r1} ${r1} 0 ${L} 1 ${pt(r1, e)} Z`;
+  return `M${pt(r1, a0)} A${r1} ${r1} 0 ${L} 1 ${pt(r1, e)} L${pt(r0, e)} A${r0} ${r0} 0 ${L} 0 ${pt(r0, a0)} Z`;
+};
 const Pie = ({ data, fv = fmt }) => {
   const tot = data.reduce((a, d) => a + d.value, 0);
-  const R = 50, C = 2 * Math.PI * R; let acc = 0;
+  let acc = -Math.PI / 2;
   return (
     <div className="flex flex-wrap items-center gap-5">
-      <svg viewBox="0 0 200 200" className="w-40 h-40 shrink-0 -rotate-90">
-        <circle cx="100" cy="100" r={R} fill="none" stroke="#e7e5e0" strokeWidth="100" />
-        {tot > 0 && data.map((d, i) => { const len = d.value / tot * C; const el = <circle key={i} cx="100" cy="100" r={R} fill="none" stroke={d.color} strokeWidth="100" strokeDasharray={len + ' ' + (C - len)} strokeDashoffset={-acc} />; acc += len; return el; })}
+      <svg viewBox="0 0 200 200" className="w-40 h-40 shrink-0">
+        <circle cx="100" cy="100" r="98" fill="#e7e5e0" />
+        {tot > 0 && data.filter(d => d.value > 0).map((d, i) => { const a1 = acc + d.value / tot * Math.PI * 2; const el = <path key={i} d={arcPath(100, 100, 0, 98, acc, a1)} fill={d.color} stroke="#c9c4b8" strokeWidth="0.8"><title>{d.label}</title></path>; acc = a1; return el; })}
       </svg>
       <div className="space-y-2 text-xs flex-1 min-w-[180px]">
         {data.map(d => (
-          <div key={d.label} className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm shrink-0" style={{ background: d.color }} /><span className="text-neutral-300">{d.label}</span>
+          <div key={d.label} className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm shrink-0" style={{ background: d.color, border: '1px solid rgba(0,0,0,.2)' }} /><span className="text-neutral-300">{d.label}</span>
             <span className="text-white font-semibold ml-auto pl-3 text-right">{tot ? Math.round(d.value * 100 / tot) : 0}% · {fv(d.value)}</span></div>
         ))}
       </div>
     </div>
   );
 };
+const Switch = ({ on, onChange, disabled, label }) => (
+  <button type="button" role="switch" aria-checked={!!on} aria-label={label} disabled={disabled} onClick={onChange}
+    className="relative shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[#d4af37]/70"
+    style={{ width: 52, height: 30, background: on ? 'linear-gradient(135deg,#34d399,#059669)' : '#b9b4a8', boxShadow: on ? '0 0 0 4px rgba(16,185,129,.16), inset 0 1px 2px rgba(0,0,0,.2)' : 'inset 0 1px 3px rgba(0,0,0,.3)', transition: 'background .35s ease, box-shadow .35s ease', opacity: disabled ? .5 : 1 }}>
+    <span style={{ position: 'absolute', top: 3, left: 3, width: 24, height: 24, borderRadius: '50%', background: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,.35)', transform: on ? 'translateX(22px)' : 'translateX(0)', transition: 'transform .38s cubic-bezier(.34,1.56,.64,1)' }} />
+  </button>
+);
 const BarsChart = ({ labels, series, fv = fmt }) => {
   const W = 520, H = 200, pl = 40, pb = 24, pt = 10;
   const max = Math.max(1, ...series.flatMap(s => s.values));
@@ -534,7 +532,6 @@ function App() {
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [bdayOpen, setBdayOpen] = useState(false);
   const [goals, setGoals] = usePersist('bm_goals', {});
-  const [helpHidden, setHelpHidden] = usePersist('bm_help', {});
   const [cash, setCash] = usePersist('bm_cash', {});
   const [cajaDay, setCajaDay] = useState(TODAY_STR);
   const [repTab, setRepTab] = useState('resumen');
@@ -995,6 +992,7 @@ function App() {
   const [agendaDate, setAgendaDate] = useState(TODAY_STR);
   const [expenses, setExpenses] = usePersist('bm_expenses', []);
   const [finPeriod, setFinPeriod] = useState('mes');
+  const [gastoMonths, setGastoMonths] = useState(6);
   const [expForm, setExpForm] = useState({ date: TODAY_STR, category: EXPENSE_CATS[0], concept: '', amount: '' });
   const [editingPayId, setEditingPayId] = useState(null);
   const [receiptView, setReceiptView] = useState(null);
@@ -1008,13 +1006,17 @@ function App() {
   };
   const updateUser = (id, patch) => {
     const u = users.find(x => x.id === id);
+    if (!u) return;
+    if (role !== 'tecnico' && (u.role === 'tecnico' || patch.role === 'tecnico')) return;
     if (patch.role && u.role === 'tecnico' && patch.role !== 'tecnico' && users.filter(x => x.role === 'tecnico').length === 1) return alert('Debe existir al menos un Técnico principal.');
     if (patch.username !== undefined && users.some(x => x.id !== id && x.username.toLowerCase() === patch.username.trim().toLowerCase())) return;
     setUsers(users.map(x => x.id === id ? { ...x, ...patch } : x));
   };
   const deleteUser = (id) => {
     const u = users.find(x => x.id === id);
-    if (role !== 'tecnico') return;
+    if (!u) return;
+    if (role !== 'tecnico' && role !== 'admin') return;
+    if (role !== 'tecnico' && u.role === 'tecnico') return;
     if (id === currentUserId) return alert('No podés eliminar tu propio usuario.');
     if (u.role === 'tecnico' && users.filter(x => x.role === 'tecnico').length === 1) return alert('Debe existir al menos un Técnico principal.');
     if (confirm(`¿Eliminar el usuario ${u.username}?`)) setUsers(users.filter(x => x.id !== id));
@@ -1171,22 +1173,6 @@ function App() {
     w.document.write(html); w.document.close();
   };
   const photoInput = (cb) => (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) readProductImg(f).then(cb); };
-  const HelpTip = () => {
-    const h = PAGE_HELP[activeTab];
-    if (!h) return null;
-    const closed = !!helpHidden[activeTab];
-    return (
-      <div className="mb-5 rounded-xl border border-[#d4af37]/40 bg-[#d4af37]/10 px-4 py-3">
-        <button type="button" onClick={() => setHelpHidden({ ...helpHidden, [activeTab]: !closed })} className="w-full flex items-center gap-2 text-left">
-          <span className="w-5 h-5 rounded-full bg-[#d4af37] text-black text-xs font-bold flex items-center justify-center shrink-0">?</span>
-          <span className="text-sm font-semibold text-white flex-1">{h[0]}</span>
-          <span className="text-[11px] text-neutral-400">{closed ? 'Ver ayuda' : 'Ocultar'}</span>
-          <ChevronDown className={'w-4 h-4 text-neutral-400 transition-transform duration-300 ' + (closed ? '' : 'rotate-180')} />
-        </button>
-        {!closed && <p className="text-xs text-neutral-300 mt-2 leading-relaxed">{h[1]}</p>}
-      </div>
-    );
-  };
   const saveProduct = (e) => {
     e.preventDefault();
     const price = Number(prodForm.price);
@@ -1372,6 +1358,16 @@ function App() {
       const ms = Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (5 - i)); return d.toISOString().slice(0, 7); });
       const rv = ms.map(m => sum(payments.filter(x => !x.voided && x.date.startsWith(m)), x => x.amount) + sum(sales.filter(x => x.type === 'venta' && x.date.startsWith(m)), x => x.total));
       const gs = ms.map(m => sum(expenses.filter(x => x.date.startsWith(m)), x => x.amount));
+      const svcRev = {};
+      bookings.filter(b => b.status === 'Completado' && dd(b.date) >= 0 && dd(b.date) <= span).forEach(b => (b.serviceIds || []).forEach(id => { const sv = services.find(x => x.id === id); if (sv) svcRev[sv.name] = (svcRev[sv.name] || 0) + Number(sv.price || 0); }));
+      const svcTop = Object.entries(svcRev).sort((x, y) => y[1] - x[1]).slice(0, 8);
+      const svcOther = Math.max(0, cur.serv - svcTop.reduce((t, x) => t + x[1], 0));
+      const incomePie = [
+        ...svcTop.map(([name, v], i) => ({ label: name, value: v, color: SPAL[i] })),
+        ...(svcOther > 0 ? [{ label: svcTop.length ? 'Otros servicios' : 'Servicios', value: svcOther, color: SPAL[10] }] : []),
+        { label: 'Productos', value: cur.prod, color: SPAL[8] },
+        { label: 'Bebidas', value: cur.bev, color: SPAL[9] },
+      ];
       body = (
         <div className="space-y-4">
           {KPIS(cur)}
@@ -1379,7 +1375,8 @@ function App() {
             <div className={CARD}><h3 className="text-white mb-3">Evolución mensual</h3>
               <BarsChart labels={ms.map(m => MESES[Number(m.slice(5)) - 1])} series={[{ name: 'Facturación', color: PAL[0], values: rv }, { name: 'Gastos', color: PAL[3], values: gs }, { name: 'Ganancias', color: PAL[1], values: rv.map((v, i) => v - gs[i]) }]} /></div>
             <div className={CARD}><h3 className="text-white mb-3">Distribución de ingresos</h3>
-              <Pie data={[{ label: 'Servicios', value: cur.serv, color: PAL[0] }, { label: 'Productos', value: cur.prod, color: PAL[2] }, { label: 'Bebidas', value: cur.bev, color: PAL[1] }]} /></div>
+              <p className="text-[11px] text-neutral-500 mb-3">Cada servicio, producto y bebida con su porcentaje sobre la facturación del período.</p>
+              <Pie data={incomePie} /></div>
           </div>
         </div>
       );
@@ -1421,11 +1418,12 @@ function App() {
       const cnt = countBy(0, span), pcnt = countBy(span + 1, 2 * span + 1);
       const rows = services.map(sv => ({ label: sv.name, qty: cnt[sv.id] || 0, prevQty: pcnt[sv.id] || 0, value: (cnt[sv.id] || 0) * sv.price })).filter(r => r.qty > 0 || r.prevQty > 0).sort((a, b) => b.qty - a.qty || b.value - a.value);
       const top = rows.slice(0, 7), rest = rows.slice(7);
-      const pie = [...top.filter(r => r.qty > 0).map((r, i) => ({ label: r.label, value: r.qty, color: SPAL[i] })), ...(rest.some(r => r.qty > 0) ? [{ label: 'Otros', value: sum(rest, r => r.qty), color: SPAL[7] }] : [])];
+      const topP = rows.slice(0, 10), restP = rows.slice(10);
+      const pie = [...topP.filter(r => r.qty > 0).map((r, i) => ({ label: r.label, value: r.qty, color: SPAL[i] })), ...(restP.some(r => r.qty > 0) ? [{ label: 'Otros', value: sum(restP, r => r.qty), color: SPAL[10] }] : [])];
       const u = (n) => n + (n === 1 ? ' servicio' : ' servicios');
       body = (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className={CARD}><h3 className="text-white mb-1">Servicios más solicitados</h3><p className="text-[11px] text-neutral-500 mb-3">Qué porcentaje de los servicios realizados representa cada uno (máx. 7 + otros).</p><Pie data={pie} fv={u} /></div>
+          <div className={CARD}><h3 className="text-white mb-1">Servicios más solicitados</h3><p className="text-[11px] text-neutral-500 mb-3">Qué porcentaje de los servicios realizados representa cada uno (hasta 10 servicios + otros).</p><Pie data={pie} fv={u} /></div>
           <div className={CARD}><h3 className="text-white mb-3">Servicios más rentables</h3><HBars rows={top.map(r => ({ label: r.label, value: r.value, text: r.qty + ' × · ' + fmt(r.value) }))} /></div>
           <div className={CARD + ' lg:col-span-2'}><h3 className="text-white mb-1">Comparativa con el período anterior</h3><p className="text-[11px] text-neutral-500 mb-3">Los 7 servicios más pedidos: cuántas veces se hicieron ahora y antes.</p>
             {top.length > 0 ? <BarsChart fv={u} labels={top.map(r => r.label.length > 11 ? r.label.slice(0, 10) + '…' : r.label)} series={[{ name: 'Período anterior', color: '#a8a29e', values: top.map(r => r.prevQty) }, { name: 'Período actual', color: PAL[0], values: top.map(r => r.qty) }]} /> : <p className="text-xs text-neutral-500 text-center py-4">Sin datos en este período.</p>}</div>
@@ -1504,6 +1502,33 @@ function App() {
     );
   };
   const [newBarberName, setNewBarberName] = useState('');
+  // --- Servicios (alta / edición / baja) ---
+  const [svcModal, setSvcModal] = useState(null);
+  const [svcFilter, setSvcFilter] = useState('todos');
+  const [svcForm, setSvcForm] = useState({ name: '', price: '', duration: '30', icon: 'scissors' });
+  const [cmpMonths, setCmpMonths] = usePersist('bm_cmp_months', 3);
+  const openSvcModal = (sv) => {
+    setSvcForm(sv ? { name: sv.name, price: String(sv.price), duration: String(sv.duration), icon: sv.icon || 'scissors' } : { name: '', price: '', duration: '30', icon: 'scissors' });
+    setSvcModal(sv ? sv.id : 'new');
+  };
+  const saveSvc = (e) => {
+    e.preventDefault();
+    const name = svcForm.name.trim(), price = Number(svcForm.price), duration = Number(svcForm.duration);
+    if (!name) return alert('Escribí el nombre del servicio.');
+    if (svcForm.price === '' || !(price >= 0)) return alert('Ingresá un precio válido.');
+    if (svcForm.duration === '' || !(duration >= 0)) return alert('Ingresá los minutos del servicio.');
+    if (services.some(x => x.id !== svcModal && x.name.trim().toLowerCase() === name.toLowerCase())) return alert('Ya existe un servicio con ese nombre.');
+    if (svcModal === 'new') setServices([...services, { id: `s-${Date.now()}`, name, price, duration, icon: svcForm.icon }]);
+    else setServices(services.map(x => x.id === svcModal ? { ...x, name, price, duration, icon: svcForm.icon } : x));
+    setSvcModal(null);
+  };
+  const deleteSvc = (sv) => {
+    if (services.length <= 1) return alert('Debe quedar al menos un servicio.');
+    if (!confirm(`¿Eliminar "${sv.name}"?`)) return;
+    setServices(services.filter(x => x.id !== sv.id));
+    setSelectedServiceIds(ids => { const f = ids.filter(i => i !== sv.id); return f.length ? f : [services.find(x => x.id !== sv.id).id]; });
+  };
+  const toggleSvc = (sv) => setServices(services.map(x => x.id === sv.id ? { ...x, suspended: !x.suspended } : x));
   const addBarber = () => {
     const name = newBarberName.trim();
     if (!name) return;
@@ -1662,7 +1687,6 @@ function App() {
         <div className="flex-1 min-w-0 light-area">
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 pb-28 md:pb-8 relative z-10">
         <div key={activeTab} className="page-in"><div>
-        {HelpTip()}
 
         {/* ========================================================
             TAB 1: NUEVA RESERVA (FLUJO RÁPIDO RECEPCIÓN DE 1 PANTALLA)
@@ -2225,43 +2249,74 @@ function App() {
         )}
 
         {/* ===== SERVICIOS ===== */}
-        {activeTab === 'servicios' && (
-          <div className="space-y-6">
-          <div className={CARD + ' space-y-5'}>
-            <div>
-              <h2 className="text-white">Servicios y precios</h2>
-              <p className="text-xs text-neutral-500 mt-1">Los cambios se aplican a las nuevas reservas y se guardan en este dispositivo.</p>
-              {role === 'tecnico' && <button type="button" onClick={() => { if (services.some(x => x.name.trim().toLowerCase() === 'nuevo servicio')) return alert('Primero renombrá el servicio nuevo que ya agregaste.'); setServices([...services, { id: `s-${Date.now()}`, name: 'Nuevo servicio', duration: 30, price: 10000, icon: 'scissors' }]); }} className="mt-3 px-3 py-1.5 rounded-lg bg-[#d4af37] text-black text-xs font-semibold">+ Agregar servicio</button>}
-            </div>
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-neutral-500" />
-              <input value={svcQuery} onChange={e => setSvcQuery(e.target.value)} placeholder="Buscar servicio…" className={INP + ' pl-10'} />
-            </div>
-            <div className="space-y-3">
-              {services.filter(s => s.name.toLowerCase().includes(svcQuery.trim().toLowerCase())).map(s => (
-                <div key={s.id} className={'grid grid-cols-2 sm:grid-cols-12 gap-3 items-end p-3 rounded-xl border ' + (s.suspended ? 'border-red-500/40 bg-red-500/5' : 'border-[#2b2822]')}>
-                  <div className="col-span-2 sm:col-span-6"><label className={LBL}>Nombre</label>
-                    <input value={s.name} onChange={e => setServices(services.map(x => x.id === s.id ? { ...x, name: e.target.value } : x))} className={INP} />
-                    {services.some(x => x.id !== s.id && x.name.trim().toLowerCase() === s.name.trim().toLowerCase()) && <p className="text-[11px] text-red-400 mt-1">Nombre repetido: cambialo para no confundirte.</p>}</div>
-                  <div className="col-span-1 sm:col-span-3"><label className={LBL}>Precio (Gs.)</label>
-                    <input type="number" inputMode="numeric" value={s.price} onChange={e => setServices(services.map(x => x.id === s.id ? { ...x, price: Number(e.target.value) } : x))} className={INP} /></div>
-                  <div className="col-span-1 sm:col-span-3"><label className={LBL}>Minutos</label>
-                    <input type="number" inputMode="numeric" value={s.duration} onChange={e => setServices(services.map(x => x.id === s.id ? { ...x, duration: Number(e.target.value) } : x))} className={INP} /></div>
-                  
-                  <div className="col-span-2 sm:col-span-12 flex items-center justify-between gap-3">
-                    <span className={'text-[11px] ' + (s.suspended ? 'text-red-400' : 'text-emerald-400')}>{s.suspended ? 'No aparece al reservar ni cobrar' : 'Disponible para reservas'}</span>
-                    <button type="button" onClick={() => setServices(services.map(x => x.id === s.id ? { ...x, suspended: !x.suspended } : x))}
-                      className={'px-4 py-2 rounded-xl text-xs font-semibold text-white ' + (s.suspended ? 'bg-red-600 hover:bg-red-500' : 'bg-emerald-600 hover:bg-emerald-500')}>{s.suspended ? 'Suspendido' : 'Activado'}</button>
-                  </div>
-                  {role === 'tecnico' && services.length > 1 && <div className="col-span-2 sm:col-span-12 flex justify-end"><button type="button" onClick={() => { setServices(services.filter(x => x.id !== s.id)); setSelectedServiceIds(ids => { const f = ids.filter(i => i !== s.id); return f.length ? f : [services.find(x => x.id !== s.id).id]; }); }} className="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" />Eliminar servicio</button></div>}
+        {activeTab === 'servicios' && (() => {
+          const q = svcQuery.trim().toLowerCase();
+          const list = services.filter(sv => sv.name.toLowerCase().includes(q) && (svcFilter === 'todos' || (svcFilter === 'activos' ? !sv.suspended : !!sv.suspended)));
+          const activeN = services.filter(sv => !sv.suspended).length;
+          const avg = services.length ? Math.round(services.reduce((acc, sv) => acc + Number(sv.price || 0), 0) / services.length) : 0;
+          return (
+            <div className="space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+                <div>
+                  <h2 className="text-white">Servicios y precios</h2>
+                  <p className="text-xs text-neutral-500 mt-0.5">Los cambios se aplican a las nuevas reservas y se guardan en este dispositivo.</p>
                 </div>
-              ))}
-            </div>
-          </div>
-          </div>
-        )}
+                <button type="button" onClick={() => openSvcModal(null)} className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold self-start sm:self-auto"><PlusCircle className="w-4 h-4" />Nuevo servicio</button>
+              </div>
 
-{/* ===== GASTOS Y PAGOS ===== */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Servicios</p><p className="text-xl font-bold text-white mt-1">{services.length}</p></div>
+                <div className="bg-emerald-500/5 border border-emerald-500/30 rounded-xl p-3.5"><p className="text-[11px] text-emerald-400">Activos</p><p className="text-xl font-bold text-white mt-1">{activeN}</p></div>
+                <div className="bg-red-500/5 border border-red-500/30 rounded-xl p-3.5"><p className="text-[11px] text-red-400">Suspendidos</p><p className="text-xl font-bold text-white mt-1">{services.length - activeN}</p></div>
+                <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Precio promedio</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(avg)}</p></div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-neutral-500" />
+                  <input value={svcQuery} onChange={e => setSvcQuery(e.target.value)} placeholder="Buscar servicio…" className={INP + ' pl-10'} />
+                </div>
+                <div className="inline-flex self-start sm:self-auto p-0.5 rounded-xl bg-[#141414] border border-[#2b2822]">
+                  {[['todos', 'Todos'], ['activos', 'Activos'], ['suspendidos', 'Suspendidos']].map(([k, l]) => (
+                    <button key={k} type="button" onClick={() => setSvcFilter(k)} className={`px-3.5 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${svcFilter === k ? 'bg-[#d4af37] text-black' : 'text-neutral-400 hover:text-white'}`}>{l}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-[#141414] border border-[#2b2822] rounded-xl overflow-hidden">
+                <div className="hidden sm:flex items-center gap-3 px-4 py-2.5 text-[11px] uppercase tracking-wider text-neutral-500 border-b border-[#2b2822] bg-white/5">
+                  <span className="w-10" /><span className="flex-1">Servicio</span><span className="w-20 text-center">Duración</span><span className="w-32 text-right">Precio</span><span className="w-40 text-center">Estado</span><span className="w-[76px] text-right">Acciones</span>
+                </div>
+                <div className="divide-y divide-neutral-800">
+                  {list.map(sv => (
+                    <div key={sv.id} className="relative flex items-center gap-2.5 sm:gap-3 pl-4 pr-3 sm:px-4 py-3.5 hover:bg-white/[.04] transition-colors">
+                      <span className={'absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-r-full transition-colors duration-300 ' + (sv.suspended ? 'bg-red-500/70' : 'bg-emerald-500/70')} />
+                      <div className={'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-opacity ' + (sv.suspended ? 'bg-neutral-800 text-neutral-500' : 'bg-[#d4af37]/15 text-[#d4af37]')}><ServiceIcon name={sv.icon} className="w-5 h-5" /></div>
+                      <div className={'flex-1 min-w-0 transition-opacity ' + (sv.suspended ? 'opacity-50' : '')}>
+                        <p className="text-sm font-semibold text-white truncate">{sv.name}</p>
+                        <p className="text-xs text-neutral-500 sm:hidden">{sv.duration ? sv.duration + ' min' : 'Sin duración'} · {fmt(sv.price)}</p>
+                      </div>
+                      <span className={'hidden sm:flex w-20 justify-center ' + (sv.suspended ? 'opacity-50' : '')}><span className="px-2 py-0.5 rounded-md bg-white/5 border border-[#2b2822] text-[11px] text-neutral-300">{sv.duration ? sv.duration + ' min' : '—'}</span></span>
+                      <span className={'hidden sm:block w-32 text-right text-sm font-semibold text-white ' + (sv.suspended ? 'opacity-50' : '')}>{fmt(sv.price)}</span>
+                      <div className="sm:w-40 flex items-center sm:justify-center gap-3 shrink-0">
+                        <span className={'hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium w-[104px] justify-center transition-colors duration-300 ' + (sv.suspended ? 'text-red-400 border-red-500/30 bg-red-500/10' : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10')}><span className={'w-1.5 h-1.5 rounded-full ' + (sv.suspended ? 'bg-red-400' : 'bg-emerald-400')} />{sv.suspended ? 'Suspendido' : 'Activo'}</span>
+                        <Switch on={!sv.suspended} onChange={() => toggleSvc(sv)} label={sv.suspended ? 'Activar servicio' : 'Suspender servicio'} />
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button type="button" onClick={() => openSvcModal(sv)} className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-white/5" aria-label="Editar servicio" title="Editar"><Pencil className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => deleteSvc(sv)} className="p-2 rounded-lg text-neutral-500 hover:text-red-500 hover:bg-red-500/10" aria-label="Eliminar servicio" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </div>
+                  ))}
+                  {list.length === 0 && <p className="text-sm text-neutral-500 text-center py-10">No hay servicios para mostrar.</p>}
+                </div>
+                <div className="px-4 py-2 border-t border-[#2b2822] bg-white/5 text-[11px] text-neutral-500">Mostrando {list.length} de {services.length} servicios</div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ===== GASTOS Y PAGOS ===== */}
         {(activeTab === 'finanzas' || activeTab === 'gastos') && (() => {
           const isG = activeTab === 'gastos';
           const inFin = (d) => finDay ? d === finDay : inRange(d, finPeriod);
@@ -2323,6 +2378,61 @@ function App() {
                   <div className="bg-red-500/5 border border-red-500/30 rounded-xl p-3.5"><p className="text-[11px] text-red-400">Egresos</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(spent)}</p></div>
                   <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Resultado neto</p><p className={`text-base sm:text-xl font-bold mt-1 break-words ${net < 0 ? 'text-red-400' : 'text-white'}`}>{fmt(net)}</p></div>
                 </div>
+
+                {isG && (() => {
+                  const n = Math.min(24, Math.max(2, Number(gastoMonths) || 6));
+                  const ms = Array.from({ length: n }, (_, i) => { const d = new Date(); d.setDate(1); d.setHours(12, 0, 0, 0); d.setMonth(d.getMonth() - (n - 1 - i)); return d.toISOString().slice(0, 7); });
+                  const cats = [...new Set([...EXPENSE_CATS, ...expenses.map(x => x.category)])];
+                  const cell = (c, m) => expenses.filter(x => x.date.startsWith(m) && (!c || x.category === c)).reduce((a, x) => a + x.amount, 0);
+                  const totals = ms.map(m => cell('', m));
+                  const grand = totals.reduce((a, v) => a + v, 0);
+                  const avgM = Math.round(grand / n);
+                  const hi = totals.indexOf(Math.max(...totals)), lo = totals.indexOf(Math.min(...totals));
+                  const mLabel = (m) => MESES[Number(m.slice(5)) - 1] + (n > 12 ? ' ' + m.slice(2, 4) : '');
+                  const rowsC = cats.map(c => ({ c, vals: ms.map(m => cell(c, m)) })).filter(r => r.vals.some(v => v > 0));
+                  const varPct = (a, b) => b === 0 ? (a === 0 ? '—' : 'nuevo') : ((a - b) / b * 100 >= 0 ? '+' : '') + Math.round((a - b) / b * 100) + '%';
+                  return (
+                    <div className={CARD + ' space-y-4'}>
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <h3 className="text-white">Comparativo de gastos por mes</h3>
+                          <p className="text-[11px] text-neutral-500 mt-0.5">Elegí cuántos meses querés comparar (los últimos {n}, incluido el actual).</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 no-print">
+                          <div className="inline-flex p-0.5 rounded-lg bg-black border border-[#2b2822]">
+                            {[2, 3, 4, 6, 12].map(k => (
+                              <button key={k} type="button" onClick={() => setGastoMonths(k)} className={'px-3 py-1 rounded-md text-[11px] font-medium ' + (n === k ? 'bg-[#d4af37] text-black' : 'text-neutral-400 hover:text-white')}>{k}</button>
+                            ))}
+                          </div>
+                          <label className="flex items-center gap-1.5 text-[11px] text-neutral-400">Otro:
+                            <input type="number" min="2" max="24" value={gastoMonths} onChange={e => setGastoMonths(e.target.value === '' ? '' : Math.min(24, Math.max(1, Number(e.target.value))))} onBlur={() => setGastoMonths(n)} className="w-16 bg-black border border-[#2b2822] focus:border-[#d4af37] rounded-lg px-2 py-1 text-[11px] text-neutral-100 outline-none" />
+                            meses
+                          </label>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="rounded-xl p-3 border border-[#2b2822] bg-black"><p className="text-[11px] text-neutral-500">Total del período</p><p className="text-base font-bold text-white mt-1 break-words">{fmt(grand)}</p></div>
+                        <div className="rounded-xl p-3 border border-[#2b2822] bg-black"><p className="text-[11px] text-neutral-500">Promedio mensual</p><p className="text-base font-bold text-white mt-1 break-words">{fmt(avgM)}</p></div>
+                        <div className="rounded-xl p-3 border border-red-500/30 bg-red-500/5"><p className="text-[11px] text-red-400">Mes con más gasto</p><p className="text-base font-bold text-white mt-1">{mLabel(ms[hi])}</p><p className="text-[10px] text-neutral-500 break-words">{fmt(totals[hi])}</p></div>
+                        <div className="rounded-xl p-3 border border-emerald-500/30 bg-emerald-500/5"><p className="text-[11px] text-emerald-400">Mes con menos gasto</p><p className="text-base font-bold text-white mt-1">{mLabel(ms[lo])}</p><p className="text-[10px] text-neutral-500 break-words">{fmt(totals[lo])}</p></div>
+                      </div>
+                      <BarsChart labels={ms.map(mLabel)} series={[{ name: 'Gastos', color: PAL[3], values: totals }]} />
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs min-w-max">
+                          <thead><tr className="text-left text-neutral-500"><th className="py-2 pr-4 font-medium sticky left-0 bg-[#141414]">Categoría</th>{ms.map(m => <th key={m} className="py-2 px-2 font-medium text-right whitespace-nowrap">{mLabel(m)}</th>)}<th className="py-2 pl-3 font-medium text-right">Total</th></tr></thead>
+                          <tbody className="divide-y divide-neutral-800">
+                            {rowsC.map(r => (
+                              <tr key={r.c}><td className="py-2 pr-4 text-neutral-300 whitespace-nowrap sticky left-0 bg-[#141414]">{r.c}</td>{r.vals.map((v, i) => <td key={i} className={'py-2 px-2 text-right whitespace-nowrap ' + (v ? 'text-neutral-200' : 'text-neutral-600')}>{v ? fmt(v) : '—'}</td>)}<td className="py-2 pl-3 text-right text-white font-semibold whitespace-nowrap">{fmt(r.vals.reduce((a, v) => a + v, 0))}</td></tr>
+                            ))}
+                            <tr className="font-bold"><td className="py-2.5 pr-4 text-white sticky left-0 bg-[#141414]">Total</td>{totals.map((v, i) => <td key={i} className="py-2.5 px-2 text-right text-white whitespace-nowrap">{fmt(v)}</td>)}<td className="py-2.5 pl-3 text-right text-[#d4af37] whitespace-nowrap">{fmt(grand)}</td></tr>
+                            <tr><td className="py-2 pr-4 text-neutral-500 sticky left-0 bg-[#141414]">Variación vs. mes anterior</td>{totals.map((v, i) => <td key={i} className={'py-2 px-2 text-right font-semibold whitespace-nowrap ' + (i === 0 ? 'text-neutral-600' : v > totals[i - 1] ? 'text-red-400' : v < totals[i - 1] ? 'text-emerald-400' : 'text-neutral-400')}>{i === 0 ? '—' : varPct(v, totals[i - 1])}</td>)}<td /></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-[10px] text-neutral-600">Rojo: el gasto subió respecto al mes anterior. Verde: bajó. Usá «Imprimir reporte» para sacar este resumen.</p>
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                   <div className={isG ? 'lg:col-span-5 space-y-6 no-print' : 'hidden'}>
@@ -2436,11 +2546,11 @@ function App() {
             if (sv) counts[sv.name] = (counts[sv.name] || 0) + 1;
           }));
           const ranked = Object.entries(counts).sort((x, y) => y[1] - x[1]);
-          const top = ranked.slice(0, 5);
-          const rest = ranked.slice(5).reduce((acc, x) => acc + x[1], 0);
+          const top = ranked.slice(0, 8);
+          const rest = ranked.slice(8).reduce((acc, x) => acc + x[1], 0);
           if (rest) top.push(['Otros', rest]);
           const totalSrv = top.reduce((acc, x) => acc + x[1], 0);
-          const COLORS = ['#d4af37', '#1f1f1f', '#e3c25b', '#8a6d1f', '#9a9a9a', '#cfcfcf'];
+          const colorOf = (name, i) => name === 'Otros' ? SPAL[10] : SPAL[i % 10];
           const C = 2 * Math.PI * 40;
           let off = 0;
 
@@ -2500,20 +2610,15 @@ function App() {
                   {totalSrv === 0 ? <p className="text-xs text-neutral-500 py-10 text-center">Todavía no hay servicios registrados.</p> : (
                     <div className="flex-1 flex items-center justify-center gap-5 mt-3">
                       <svg viewBox="0 0 120 120" className="w-36 h-36 sm:w-48 sm:h-48 shrink-0">
-                        <circle cx="60" cy="60" r="40" fill="none" stroke="#ece9e0" strokeWidth="18" />
-                        {top.map(([name, n], i) => {
-                          const len = n / totalSrv * C;
-                          const el = <circle key={name} cx="60" cy="60" r="40" fill="none" stroke={COLORS[i % COLORS.length]} strokeWidth="18" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-off} transform="rotate(-90 60 60)" />;
-                          off += len;
-                          return el;
-                        })}
+                        <circle cx="60" cy="60" r="49" fill="#ece9e0" />
+                        {(() => { let ang = -Math.PI / 2; return top.map(([name, n], i) => { const a1 = ang + n / totalSrv * Math.PI * 2; const el = <path key={name} d={arcPath(60, 60, 31, 50, ang, a1)} fill={colorOf(name, i)} stroke="#c9c4b8" strokeWidth="0.5"><title>{name}: {n}</title></path>; ang = a1; return el; }); })()}
                         <text x="60" y="58" textAnchor="middle" fontSize="18" fontWeight="700" fill="#151515">{totalSrv}</text>
                         <text x="60" y="72" textAnchor="middle" fontSize="8" fill="#6e6e6e">servicios</text>
                       </svg>
                       <div className="flex-1 min-w-0 space-y-2.5">
                         {top.map(([name, n], i) => (
                           <div key={name} className="flex items-center justify-between gap-2 text-sm">
-                            <span className="flex items-center gap-2 min-w-0 text-neutral-300"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: COLORS[i % COLORS.length] }}></span><span className="truncate">{name}</span></span>
+                            <span className="flex items-center gap-2 min-w-0 text-neutral-300"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: colorOf(name, i), border: '1px solid rgba(0,0,0,.2)' }}></span><span className="truncate">{name}</span></span>
                             <span className="text-white font-semibold shrink-0">{Math.round(n / totalSrv * 100)}%</span>
                           </div>
                         ))}
@@ -2584,133 +2689,73 @@ function App() {
         })()}
 
         {/* ===== BARBEROS / EQUIPO ===== */}
-        {activeTab === 'equipo' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <h2 className="text-white">Barberos y equipo</h2>
-                <p className="text-xs text-neutral-500 mt-0.5">Alta y baja del equipo, comisiones y balance por barbero</p>
-              </div>
-              <div className="inline-flex max-w-full overflow-x-auto no-scrollbar self-start sm:self-auto p-0.5 rounded-lg bg-[#141414] border border-[#2b2822]">
-                {[['hoy', 'Hoy'], ['semana', 'Semana'], ['quincena', 'Quincena'], ['mes', 'Mes'], ['ano', 'Año']].map(([k, l]) => (
-                  <button key={k} onClick={() => setStatsPeriod(k)} className={`px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap ${statsPeriod === k ? 'bg-[#d4af37] text-black' : 'text-neutral-400 hover:text-white'}`}>{l}</button>
-                ))}
-              </div>
-            </div>
-            {/* RESUMEN DESPLEGABLE POR BARBERO */}
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+        {activeTab === 'equipo' && (() => {
+          const cards = barbers.map(b => ({ b, st: barberStats(b.id, statsPeriod, statsDay) }));
+          const totalAll = cards.reduce((acc, c) => acc + c.st.total, 0);
+          const servAll = cards.reduce((acc, c) => acc + c.st.services, 0);
+          const shareAll = cards.reduce((acc, c) => acc + c.st.share, 0);
+          return (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <h2 className="text-white">Resumen por barbero</h2>
-                  <p className="text-xs text-neutral-500 mt-1">Tocá un barbero para desplegar su resumen ({statsDay ? 'día ' + statsDay : 'período elegido arriba'}).</p>
+                  <h2 className="text-white">Barberos y equipo</h2>
+                  <p className="text-xs text-neutral-500 mt-0.5">Tocá la tarjeta de un barbero para ver su informe completo.</p>
                 </div>
-                <button type="button" onClick={() => openReport(barbers.map(b => b.id), statsPeriod, statsDay)} className="px-4 py-2.5 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold">Reporte del equipo</button>
+                <div className="inline-flex max-w-full overflow-x-auto no-scrollbar self-start sm:self-auto p-0.5 rounded-lg bg-[#141414] border border-[#2b2822]">
+                  {[['hoy', 'Hoy'], ['semana', 'Semana'], ['quincena', 'Quincena'], ['mes', 'Mes'], ['ano', 'Año']].map(([k, l]) => (
+                    <button key={k} onClick={() => { setStatsPeriod(k); setStatsDay(''); }} className={`px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap ${!statsDay && statsPeriod === k ? 'bg-[#d4af37] text-black' : 'text-neutral-400 hover:text-white'}`}>{l}</button>
+                  ))}
+                </div>
               </div>
-              {barbers.map(b => {
-                const st = barberStats(b.id, statsPeriod, statsDay);
-                const open = openBarber === b.id;
-                return (
-                  <div key={b.id} className={CARD + ' !p-0 overflow-hidden'}>
-                    <button type="button" onClick={() => setOpenBarber(open ? '' : b.id)} className="w-full flex items-center gap-3 p-4 text-left">
-                      <Avatar src={b.photo} name={b.name} size={44} />
-                      <div className="flex-1 min-w-0"><p className="text-sm font-semibold text-white truncate">{b.name}</p><p className="text-xs text-neutral-500">{st.clients} clientes · {st.services} servicios · {fmt(st.total)}</p></div>
-                      <ChevronDown className={'w-5 h-5 text-neutral-400 shrink-0 transition-transform duration-300 ' + (open ? 'rotate-180' : '')} />
-                    </button>
-                    {open && (
-                      <div className="p-4 pt-0 space-y-3" style={{ animation: 'itemIn .35s both' }}>
-                        {barberSummary(b.id, statsPeriod, statsDay, false)}
-                        <button type="button" onClick={() => openReport([b.id], statsPeriod, statsDay)} className="px-3 py-2 rounded-xl border border-[#2b2822] hover:border-[#d4af37] text-xs text-neutral-300">Reporte de {b.name}</button>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400">
+                <span>Ver un solo día:</span>
+                <input type="date" value={statsDay} onChange={e => setStatsDay(e.target.value)} className="bg-[#141414] border border-[#2b2822] rounded-lg px-2.5 py-1 text-[11px] text-neutral-200 outline-none focus:border-[#d4af37]" />
+                {statsDay && <button type="button" onClick={() => setStatsDay('')} className="text-[11px] text-neutral-400 hover:text-white">Quitar día</button>}
+                <button type="button" onClick={() => openReport(barbers.map(b => b.id), statsPeriod, statsDay)} className="ml-auto px-4 py-2 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-xs font-semibold">Reporte del equipo</button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Producción del equipo</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(totalAll)}</p></div>
+                <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Servicios realizados</p><p className="text-base sm:text-xl font-bold text-white mt-1">{servAll}</p></div>
+                <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Comisiones</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(shareAll)}</p></div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {cards.map(({ b, st }) => (
+                  <button key={b.id} type="button" onClick={() => setOpenBarber(b.id)} className="text-left bg-[#141414] border border-[#2b2822] hover:border-[#d4af37] rounded-2xl p-5 space-y-4 hover:-translate-y-0.5 hover:shadow-lg transition-all">
+                    <div className="flex items-center gap-3">
+                      <Avatar src={b.photo} name={b.name} size={56} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-base font-semibold text-white truncate">{b.name}</p>
+                        <p className="text-xs text-neutral-500">Comisión {st.pc}%</p>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* BALANCE POR BARBERO */}
-            <div className="space-y-4">
-              <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-                {[['todos', 'Todos los barberos'], ...barbers.map(x => [x.id, x.name])].map(([k, l]) => (
-                  <button key={k} onClick={() => setStatsBarber(k)} className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap border ${statsBarber === k ? 'bg-[#d4af37] text-black border-[#d4af37]' : 'border-[#2b2822] text-neutral-400 hover:text-white'}`}>{l}</button>
+                      <ChevronRight className="w-5 h-5 text-neutral-500 shrink-0" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-neutral-500">Producción</p>
+                      <p className="text-2xl font-bold text-white break-words">{fmt(st.total)}</p>
+                      <div className="w-full bg-black rounded-full h-2 mt-2 border border-[#2b2822] overflow-hidden"><div className="bg-[#d4af37] h-full rounded-full transition-all duration-700" style={{ width: (totalAll ? Math.round(st.total / totalAll * 100) : 0) + '%' }} /></div>
+                      <p className="text-[10px] text-neutral-500 mt-1">{totalAll ? Math.round(st.total / totalAll * 100) : 0}% de la producción del equipo</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-lg bg-black border border-[#2b2822] py-2"><p className="text-sm font-bold text-white">{st.clients}</p><p className="text-[10px] text-neutral-500">Clientes</p></div>
+                      <div className="rounded-lg bg-black border border-[#2b2822] py-2"><p className="text-sm font-bold text-white">{st.services}</p><p className="text-[10px] text-neutral-500">Servicios</p></div>
+                      <div className="rounded-lg bg-black border border-[#2b2822] py-2 px-1"><p className="text-sm font-bold text-emerald-400 truncate">{short(st.net)}</p><p className="text-[10px] text-neutral-500">Neto</p></div>
+                    </div>
+                    <p className="text-[11px] text-[#d4af37] font-medium">Tocá para ver el informe completo</p>
+                  </button>
                 ))}
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400"><span>Ver un solo día:</span><input type="date" value={statsDay} onChange={e => setStatsDay(e.target.value)} className="bg-[#141414] border border-[#2b2822] rounded-lg px-2.5 py-1 text-[11px] text-neutral-200 outline-none focus:border-[#d4af37]" />{statsDay && <button type="button" onClick={() => setStatsDay('')} className="text-[11px] hover:text-white">Quitar día</button>}</div>
-              {statsDay
-                ? (statsBarber === 'todos' ? barbers : barbers.filter(x => x.id === statsBarber)).map(x => <div key={x.id} className="space-y-2"><h3 className="text-white">{x.name} · {statsDay}</h3>{barberDetail(x.id, statsPeriod, true, statsDay)}</div>)
-                : (statsBarber !== 'todos' && barberDetail(statsBarber, statsPeriod, false))}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-white">Balance por barbero</h2>
-                <p className="text-xs text-neutral-500 mt-1">Total cobrado en el período: <span className="text-white font-semibold">{fmt(grandTotal)}</span></p>
-              </div>
-              
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {balances.filter(x => statsBarber === 'todos' || x.barber.id === statsBarber).map(x => (
-                <div key={x.barber.id} className={CARD + ' space-y-4'}>
-                  <div className="flex items-center gap-3">
-                    <Avatar src={x.barber.photo} name={x.barber.name} size={40} />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{x.barber.name}</p>
-                      <p className="text-xs text-neutral-500">{x.count} cobros</p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-neutral-500">Total cobrado</p>
-                    <p className="text-2xl font-bold text-white">{fmt(x.total)}</p>
-                    <div className="w-full bg-black rounded-full h-2 mt-2 border border-[#2b2822] overflow-hidden"><div className="bg-[#d4af37] h-full rounded-full" style={{ width: `${grandTotal ? Math.round(x.total / grandTotal * 100) : 0}%` }}></div></div>
-                  </div>
-                  <div className="text-xs space-y-1.5">
-                    {METHODS.map(m => <div key={m} className="flex justify-between text-neutral-400"><span>{m}</span><span className="text-neutral-200">{fmt(x.byMethod[m])}</span></div>)}
-                  </div>
-                  <div className="pt-3 border-t border-[#2b2822] space-y-2">
-                    <div className="flex items-center justify-between text-xs text-neutral-400">
-                      <span>Comisión del barbero (%)</span>
-                      {role === 'tecnico'
-                        ? <input type="number" min="0" max="100" value={x.pct} onChange={e => setCommissions({ ...commissions, [x.barber.id]: e.target.value })} className="w-16 bg-black border border-[#2b2822] rounded-lg px-2 py-1 text-right text-white outline-none focus:border-[#d4af37]" />
-                        : <span className="text-white">{x.pct}%</span>}
-                    </div>
-                    <div className="flex justify-between text-sm"><span className="text-neutral-400">Parte del barbero</span><span className="font-semibold text-white">{fmt(x.share)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-neutral-400">Consumos (mercadería)</span><span className="font-semibold text-red-400">- {fmt(x.cons)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-neutral-200 font-semibold">Neto del barbero</span><span className="font-bold text-emerald-400">{fmt(x.net)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-neutral-400">Parte de la barbería</span><span className="font-semibold text-white">{fmt(x.house)}</span></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
 
-            
-            {/* GESTIÓN DEL EQUIPO */}
-            <div className={CARD + ' space-y-4'}>
-            <div>
-              <h2 className="text-white">Barberos</h2>
-              <p className="text-xs text-neutral-500 mt-1">Agregá o eliminá barberos. Aparecen en reservas, pagos y balances.</p>
-            </div>
-            <div className="space-y-2">
-              {barbers.map(b => (
-                <div key={b.id} className="flex items-center gap-2">
-                  <label className="cursor-pointer shrink-0" title="Cambiar foto"><Avatar src={b.photo} name={b.name} size={42} /><input type="file" accept="image/*" className="hidden" onChange={photoInput(img => setBarbers(barbers.map(x => x.id === b.id ? { ...x, photo: img } : x)))} /></label>
-                  <input value={b.name} onChange={e => setBarbers(barbers.map(x => x.id === b.id ? { ...x, name: e.target.value } : x))} className={INP} />
-                  {barbers.length > 1 && (
-                    <button type="button" onClick={() => { if (confirm(`¿Eliminar a ${b.name}?`)) setBarbers(barbers.filter(x => x.id !== b.id)); }}
-                      className="p-2.5 rounded-xl border border-[#2b2822] text-neutral-500 hover:text-red-500 hover:border-red-600 shrink-0" aria-label="Eliminar barbero">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                <div className="border-2 border-dashed border-[#2b2822] rounded-2xl p-5 flex flex-col justify-center gap-3 min-h-[160px]">
+                  <div className="flex items-center gap-2 text-neutral-300"><UserPlus className="w-5 h-5" /><p className="text-sm font-semibold">Agregar barbero</p></div>
+                  <input value={newBarberName} onChange={e => setNewBarberName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addBarber(); }} placeholder="Nombre del nuevo barbero" className={INP} />
+                  <button type="button" onClick={addBarber} className="py-2.5 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold">Agregar</button>
                 </div>
-              ))}
+              </div>
             </div>
-            <div className="flex gap-2 pt-3 border-t border-[#2b2822]">
-              <input value={newBarberName} onChange={e => setNewBarberName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addBarber(); }} placeholder="Nombre del nuevo barbero" className={INP} />
-              <button type="button" onClick={addBarber} className="px-4 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold shrink-0">Agregar</button>
-            </div>
-          </div>
-        
-          
-        
-          </div>
-        )}
+          );
+        })()}
 
         {/* ===== MERCADERÍA ===== */}
         {(activeTab === 'mercaderia' || activeTab === 'inventario') && (() => {
@@ -2882,21 +2927,16 @@ function App() {
           <div className="space-y-6">
             <div>
               <h2 className="text-white">Usuarios y roles</h2>
-              <p className="text-xs text-neutral-500 mt-1">Cambiá el rol, el usuario o la contraseña de cada persona. Roles: Administrador, Barbero y Caja. El Técnico tiene acceso a todo.</p>
+              <p className="text-xs text-neutral-500 mt-1">Editá o eliminá usuarios (Administrador, Barbero y Caja). El Técnico tiene acceso a todo y solo él puede modificar otros Técnicos.</p>
             </div>
             <div className={CARD + ' space-y-3'}>
-              {users.filter(u => role === 'tecnico' || u.role !== 'tecnico').map(u => role !== 'tecnico' ? (
-                <div key={u.id} className={'flex items-center justify-between gap-3 p-3 rounded-xl border border-[#2b2822] ' + (u.suspended ? 'opacity-60' : '')}>
-                  <div className="min-w-0 flex items-center gap-3"><label className="cursor-pointer shrink-0" title="Cambiar foto"><Avatar src={u.photo} name={u.username} size={40} /><input type="file" accept="image/*" className="hidden" onChange={photoInput(img => updateUser(u.id, { photo: img }))} /></label><div className="min-w-0"><p className="text-sm text-neutral-100 truncate">{u.username}</p><p className="text-xs text-neutral-500">{ROLE_LABEL[u.role]}{u.suspended ? ' · Suspendido' : ''}</p></div></div>
-                  <button type="button" onClick={() => toggleSuspend(u.id)} className={'px-3 py-2 rounded-xl border text-xs ' + (u.suspended ? 'border-emerald-600 text-emerald-400 hover:bg-emerald-600/10' : 'border-[#2b2822] text-neutral-400 hover:text-amber-400 hover:border-amber-500')}>{u.suspended ? 'Reactivar' : 'Suspender'}</button>
-                </div>
-              ) : (
+              {users.filter(u => role === 'tecnico' || u.role !== 'tecnico').map(u => (
                 <div key={u.id} className="grid grid-cols-2 sm:grid-cols-12 gap-3 items-end p-3 sm:p-0 rounded-xl border border-[#2b2822] sm:border-0">
                   <div className="sm:col-span-3"><label className={LBL}>Usuario</label><div className="flex items-center gap-2"><label className="cursor-pointer shrink-0" title="Cambiar foto"><Avatar src={u.photo} name={u.username} size={40} /><input type="file" accept="image/*" className="hidden" onChange={photoInput(img => updateUser(u.id, { photo: img }))} /></label><input value={u.username} onChange={e => updateUser(u.id, { username: e.target.value })} className={INP} /></div></div>
                   <div className="sm:col-span-3"><label className={LBL}>Contraseña</label><input value={u.password} onChange={e => updateUser(u.id, { password: e.target.value })} className={INP} /></div>
                   <div className="col-span-2 sm:col-span-4"><label className={LBL}>Rol</label>
                     <select value={u.role} onChange={e => updateUser(u.id, { role: e.target.value })} className={INP}>
-                      {Object.entries(ROLE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      {Object.entries(ROLE_LABEL).filter(([k]) => role === 'tecnico' || k !== 'tecnico').map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                     </select>{u.role === 'barbero' && <select value={u.barberId || ''} onChange={e => updateUser(u.id, { barberId: e.target.value })} className={INP + ' mt-2'}><option value="">Barbero vinculado…</option>{barbers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>}</div>
                   <div className="col-span-2 sm:col-span-2 flex flex-wrap gap-2 sm:justify-end">
                     <button type="button" onClick={() => toggleSuspend(u.id)} className="px-3 py-2.5 rounded-xl border border-[#2b2822] text-xs text-neutral-400 hover:text-amber-400 hover:border-amber-500">{u.suspended ? 'Reactivar' : 'Suspender'}</button>
@@ -3341,6 +3381,100 @@ function App() {
               <div className="flex gap-2 no-print">
                 <button onClick={() => window.print()} className="flex-1 py-2.5 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold">Imprimir</button>
                 <button onClick={() => setCierreOpen(false)} className="flex-1 py-2.5 rounded-xl border border-[#2b2822] text-sm text-neutral-300 hover:text-white">Cerrar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {svcModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSvcModal(null)}>
+          <div className="bg-[#141414] border border-[#2b2822] w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl p-5 sm:p-6" onClick={e => e.stopPropagation()}>
+            <form onSubmit={saveSvc} className="space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#2b2822]">
+                <h3 className="text-base font-bold text-white">{svcModal === 'new' ? 'Nuevo servicio' : 'Editar servicio'}</h3>
+                <button type="button" onClick={() => setSvcModal(null)} className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10" aria-label="Cerrar">✕</button>
+              </div>
+              <div><label className={LBL}>Nombre</label><input autoFocus value={svcForm.name} onChange={e => setSvcForm({ ...svcForm, name: e.target.value })} placeholder="Ej: Corte" className={INP} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LBL}>Precio (Gs.)</label><input type="number" inputMode="numeric" min="0" value={svcForm.price} onChange={e => setSvcForm({ ...svcForm, price: e.target.value })} className={INP} /></div>
+                <div><label className={LBL}>Minutos</label><input type="number" inputMode="numeric" min="0" value={svcForm.duration} onChange={e => setSvcForm({ ...svcForm, duration: e.target.value })} className={INP} /></div>
+              </div>
+              <div>
+                <label className={LBL}>Ícono</label>
+                <div className="grid grid-cols-6 gap-2">
+                  {Object.keys(SERVICE_ICONS).map(k => (
+                    <button key={k} type="button" onClick={() => setSvcForm({ ...svcForm, icon: k })} aria-label={k}
+                      className={'h-11 rounded-xl border flex items-center justify-center ' + (svcForm.icon === k ? 'border-[#d4af37] bg-[#d4af37]/15 text-[#d4af37]' : 'border-[#2b2822] text-neutral-400 hover:text-white')}><ServiceIcon name={k} className="w-5 h-5" /></button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setSvcModal(null)} className="flex-1 py-3 rounded-xl border border-[#2b2822] text-sm text-neutral-300 hover:text-white">Cancelar</button>
+                <button type="submit" className="flex-1 py-3 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold">{svcModal === 'new' ? 'Agregar servicio' : 'Guardar cambios'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {openBarber && activeTab === 'equipo' && (() => {
+        const b = barbers.find(x => x.id === openBarber);
+        if (!b) return null;
+        const st = barberStats(b.id, statsPeriod, statsDay);
+        const inP = (d) => statsDay ? d === statsDay : inRange(d, statsPeriod);
+        const pays = payments.filter(x => x.barberId === b.id && !x.voided && inP(x.date));
+        const byMethod = Object.fromEntries(METHODS.map(m => [m, pays.filter(x => x.method === m).reduce((acc, x) => acc + x.amount, 0)]));
+        const PL = { hoy: 'Hoy', semana: 'Últimos 7 días', quincena: 'Últimos 15 días', mes: 'Últimos 30 días', ano: 'Últimos 12 meses' };
+        return (
+          <div className="fixed inset-0 z-50 bg-black/85 overflow-y-auto p-3 sm:p-6" onClick={() => setOpenBarber('')}>
+            <div className="relative max-w-3xl mx-auto bg-black border border-[#2b2822] rounded-2xl p-4 sm:p-6 space-y-5" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer shrink-0" title="Cambiar foto"><Avatar src={b.photo} name={b.name} size={60} /><input type="file" accept="image/*" className="hidden" onChange={photoInput(img => setBarbers(barbers.map(x => x.id === b.id ? { ...x, photo: img } : x)))} /></label>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] text-neutral-500 mb-1">Informe del barbero</p>
+                  <input value={b.name} onChange={e => setBarbers(barbers.map(x => x.id === b.id ? { ...x, name: e.target.value } : x))} className={INP + ' !py-2 font-semibold'} />
+                </div>
+                <button type="button" onClick={() => setOpenBarber('')} className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 shrink-0" aria-label="Cerrar">✕</button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="inline-flex max-w-full overflow-x-auto no-scrollbar p-0.5 rounded-lg bg-[#141414] border border-[#2b2822]">
+                  {[['hoy', 'Hoy'], ['semana', 'Semana'], ['quincena', 'Quincena'], ['mes', 'Mes'], ['ano', 'Año']].map(([k, l]) => (
+                    <button key={k} type="button" onClick={() => { setStatsPeriod(k); setStatsDay(''); }} className={`px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap ${!statsDay && statsPeriod === k ? 'bg-[#d4af37] text-black' : 'text-neutral-400 hover:text-white'}`}>{l}</button>
+                  ))}
+                </div>
+                <span className="text-[11px] text-neutral-500">{statsDay ? 'Día ' + statsDay.split('-').reverse().join('/') : PL[statsPeriod]}</span>
+              </div>
+
+              {barberSummary(b.id, statsPeriod, statsDay, false)}
+
+              <div className={CARD + ' space-y-3'}>
+                <h3 className="text-white">Balance del período</h3>
+                <div className="text-xs space-y-1.5">
+                  {METHODS.map(m => <div key={m} className="flex justify-between text-neutral-400"><span>{m}</span><span className="text-neutral-200">{fmt(byMethod[m])}</span></div>)}
+                </div>
+                <div className="pt-3 border-t border-[#2b2822] space-y-2">
+                  <div className="flex items-center justify-between text-xs text-neutral-400">
+                    <span>Comisión del barbero (%)</span>
+                    {role === 'tecnico'
+                      ? <input type="number" min="0" max="100" value={commissions[b.id] ?? 50} onChange={e => setCommissions({ ...commissions, [b.id]: e.target.value })} className="w-16 bg-black border border-[#2b2822] rounded-lg px-2 py-1 text-right text-white outline-none focus:border-[#d4af37]" />
+                      : <span className="text-white">{st.pc}%</span>}
+                  </div>
+                  <div className="flex justify-between text-sm"><span className="text-neutral-400">Total cobrado</span><span className="font-semibold text-white">{fmt(st.total)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-neutral-400">Parte del barbero</span><span className="font-semibold text-white">{fmt(st.share)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-neutral-400">Consumos (mercadería)</span><span className="font-semibold text-red-400">- {fmt(st.cons)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-neutral-200 font-semibold">Neto del barbero</span><span className="font-bold text-emerald-400">{fmt(st.net)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-neutral-400">Parte de la barbería</span><span className="font-semibold text-white">{fmt(st.total - st.share)}</span></div>
+                </div>
+              </div>
+
+              {barberDetail(b.id, statsPeriod, false, statsDay)}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button type="button" onClick={() => openReport([b.id], statsPeriod, statsDay)} className="flex-1 min-w-[160px] py-3 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold">Descargar reporte de {b.name}</button>
+                {barbers.length > 1 && <button type="button" onClick={() => { if (confirm(`¿Eliminar a ${b.name}?`)) { setBarbers(barbers.filter(x => x.id !== b.id)); setOpenBarber(''); } }} className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-red-600/60 text-red-400 hover:bg-red-600/10 text-sm"><Trash2 className="w-4 h-4" />Eliminar barbero</button>}
+                <button type="button" onClick={() => setOpenBarber('')} className="px-4 py-3 rounded-xl border border-[#2b2822] text-sm text-neutral-300 hover:text-white">Cerrar</button>
               </div>
             </div>
           </div>
