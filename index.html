@@ -232,8 +232,10 @@ const INITIAL_BOOKINGS = [
   }
 ];
 
+const OWNER_EMAIL = 'maikelbengas@gmail.com';
+const OWNER_PASS = '123465';
 const INITIAL_USERS = [
-  { id: 'u1', username: 'tec', password: '1234', role: 'tecnico' },
+  { id: 'u1', username: 'tec', email: OWNER_EMAIL, password: OWNER_PASS, role: 'tecnico' },
   { id: 'u2', username: 'admin', password: '1234', role: 'admin' },
   { id: 'u3', username: 'barbero', password: '1234', role: 'barbero', barberId: 'b1' },
   { id: 'u4', username: 'caja', password: '1234', role: 'caja' },
@@ -608,14 +610,47 @@ function App() {
   // Cuando hay sesión de Firebase, buscar el usuario del sistema con ese correo
   useEffect(() => {
     if (!fbUser || isAuthed) return;
-    const mail = (fbUser.email || '').toLowerCase();
-    const u = users.find(x => (x.email || '').trim().toLowerCase() === mail && !x.suspended);
-    if (u) { enterAs(u); return; }
-    // los usuarios pueden tardar un momento en llegar desde la nube
-    const t = setTimeout(() => {
-      setAuthMsg('El correo ' + fbUser.email + ' no está asignado a ningún usuario activo. Pedile al administrador que lo agregue en Configuración > Usuarios.');
+    const mail = (fbUser.email || '').trim().toLowerCase();
+    const byMail = users.find(x => (x.email || '').trim().toLowerCase() === mail);
+    const usersRef = db.collection(STATE_COL).doc('bm_users');
+
+    // Dueño: el correo principal siempre entra como Técnico
+    if (mail === OWNER_EMAIL.toLowerCase()) {
+      const tec = byMail || users.find(x => x.role === 'tecnico' && !x.suspended) || users.find(x => x.role === 'tecnico');
+      if (tec) {
+        enterAs(tec);
+        if (!byMail || tec.password === '1234') {
+          db.runTransaction(async tx => {
+            const snap = await tx.get(usersRef);
+            const cur = snap.exists && Array.isArray(snap.data().value) ? snap.data().value : users;
+            tx.set(usersRef, { value: cur.map(x => x.id === tec.id ? { ...x, email: OWNER_EMAIL, password: x.password === '1234' ? OWNER_PASS : x.password } : x), updatedAt: Date.now() }, { merge: true });
+          }).catch(() => {});
+        }
+        return;
+      }
+    }
+    if (byMail) {
+      if (byMail.suspended) {
+        setAuthMsg(byMail.pending ? 'Tu cuenta está pendiente de aprobación. Pedile al administrador que te active.' : 'Tu usuario está suspendido. Hablá con el administrador.');
+        auth.signOut();
+      } else enterAs(byMail);
+      return;
+    }
+    // Correo nuevo (creado en Firebase): queda registrado como "pendiente" para que el administrador lo active
+    const t = setTimeout(async () => {
+      try {
+        await db.runTransaction(async tx => {
+          const snap = await tx.get(usersRef);
+          const cur = snap.exists && Array.isArray(snap.data().value) ? snap.data().value : users;
+          if (cur.some(x => (x.email || '').trim().toLowerCase() === mail)) return;
+          let name = mail.split('@')[0], n = 1;
+          while (cur.some(x => x.username.toLowerCase() === name.toLowerCase())) name = mail.split('@')[0] + (++n);
+          tx.set(usersRef, { value: [...cur, { id: 'u-' + Date.now(), username: name, email: mail, password: '', role: 'barbero', barberId: '', suspended: true, pending: true }], updatedAt: Date.now() }, { merge: true });
+        });
+      } catch (e) {}
+      setAuthMsg('Tu correo quedó registrado y está pendiente de aprobación. Pedile al administrador que te active en Configuración > Usuarios.');
       auth.signOut();
-    }, 6000);
+    }, 5000);
     return () => clearTimeout(t);
   }, [fbUser, users, isAuthed]);
 
@@ -632,8 +667,17 @@ function App() {
     const email = loginEmail.trim().toLowerCase();
     if (!email || !loginPass) return failLogin('Ingresá tu correo y contraseña.');
     setLoginBusy(true); setAuthMsg(''); setLoginError(false);
+    const pw = loginPass;
     try {
-      await auth.signInWithEmailAndPassword(email, loginPass);
+      try {
+        await auth.signInWithEmailAndPassword(email, pw);
+      } catch (e1) {
+        // Primera vez del dueño: crear su acceso en Firebase
+        const nf = ['auth/user-not-found', 'auth/invalid-credential', 'auth/invalid-login-credentials', 'auth/wrong-password'].includes(e1 && e1.code);
+        if (nf && email === OWNER_EMAIL.toLowerCase() && pw === OWNER_PASS) {
+          try { await auth.createUserWithEmailAndPassword(email, pw); } catch (e2) { throw e1; }
+        } else throw e1;
+      }
       try { localStorage.setItem('bmx_last_email', email); } catch (er) {}
       setLoginEmail(email); setChangingEmail(false);
     } catch (err) {
@@ -1172,14 +1216,18 @@ function App() {
     const u = users.find(x => x.id === id);
     if (!u || id === currentUserId) return alert('No podés suspender tu propio usuario.');
     if (role !== 'tecnico' && u.role === 'tecnico') return;
-    setUsers(users.map(x => x.id === id ? { ...x, suspended: !x.suspended } : x));
+    setUsers(users.map(x => x.id === id ? { ...x, suspended: !x.suspended, pending: false } : x));
   };
   const addUser = () => {
     const name = newUser.username.trim();
     if (!name || !newUser.password) return alert('Ingrese usuario y contraseña.');
+    const em = (newUser.email || '').trim().toLowerCase();
+    if (em && newUser.password.length < 6) return alert('Con correo, la contraseña debe tener al menos 6 caracteres.');
+    if (em && users.some(x => (x.email || '').toLowerCase() === em)) return alert('Ese correo ya está asignado a otro usuario.');
     if (role !== 'tecnico' && newUser.role === 'tecnico') return;
     if (users.some(x => x.username.toLowerCase() === name.toLowerCase())) return alert('Ese usuario ya existe.');
-    setUsers([...users, { id: `u-${Date.now()}`, username: name, email: (newUser.email || '').trim().toLowerCase(), password: newUser.password, role: newUser.role, barberId: newUser.barberId || '' }]);
+    if (em) createAccess({ email: em, password: newUser.password });
+    setUsers([...users, { id: `u-${Date.now()}`, username: name, email: em, password: newUser.password, role: newUser.role, barberId: newUser.barberId || '' }]);
     setNewUser({ username: '', email: '', password: '', role: 'barbero' });
   };
   const addExpense = (e) => {
@@ -3116,7 +3164,7 @@ function App() {
               {users.filter(u => role === 'tecnico' || u.role !== 'tecnico').map(u => (
                 <div key={u.id} className="grid grid-cols-2 sm:grid-cols-12 gap-3 items-end p-3 sm:p-0 rounded-xl border border-[#2b2822] sm:border-0">
                   <div className="sm:col-span-3"><label className={LBL}>Usuario</label><div className="flex items-center gap-2"><label className="cursor-pointer shrink-0" title="Cambiar foto"><Avatar src={u.photo} name={u.username} size={40} /><input type="file" accept="image/*" className="hidden" onChange={photoInput(img => updateUser(u.id, { photo: img }))} /></label><input value={u.username} onChange={e => updateUser(u.id, { username: e.target.value })} className={INP} /></div></div>
-                  <div className="sm:col-span-3"><label className={LBL}>Correo (para entrar)</label><input type="email" value={u.email || ''} placeholder="correo@gmail.com" onChange={e => updateUser(u.id, { email: e.target.value.trim().toLowerCase() })} className={INP} /></div>
+                  <div className="sm:col-span-3"><label className={LBL}>Correo (para entrar){u.pending && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 text-[10px] font-semibold">Pendiente</span>}</label><input type="email" value={u.email || ''} placeholder="correo@gmail.com" onChange={e => updateUser(u.id, { email: e.target.value.trim().toLowerCase() })} className={INP} /></div>
                   <div className="sm:col-span-3"><label className={LBL}>Contraseña</label><input value={u.password} onChange={e => updateUser(u.id, { password: e.target.value })} className={INP} /></div>
                   <div className="col-span-2 sm:col-span-4"><label className={LBL}>Rol</label>
                     <select value={u.role} onChange={e => updateUser(u.id, { role: e.target.value })} className={INP}>
