@@ -23,6 +23,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-analytics-compat.js"></script>
 <style>html,body{background:#000;margin:0}</style>
 <style id="mobile-ux">
@@ -303,6 +304,10 @@ const firebaseConfig = {
 
 const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth();
+// La sesión queda guardada en cada dispositivo (hasta que toquen "Salir")
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+auth.languageCode = 'es';
 
 // Analytics puede no estar disponible en algunos navegadores o entornos locales
 let analytics = null;
@@ -318,6 +323,8 @@ db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
 const STATE_COL = 'blackmen_state';
 
 const usePersist = (key, initial) => {
+  const [uid, setUid] = useState(() => (auth.currentUser ? auth.currentUser.uid : ''));
+  useEffect(() => auth.onAuthStateChanged(u => setUid(u ? u.uid : '')), []);
   const [v, setV] = useState(() => {
     try {
       const s = localStorage.getItem(key);
@@ -348,7 +355,7 @@ const usePersist = (key, initial) => {
       (err) => console.warn('Error escuchando Firestore en', key, err)
     );
     return () => unsub();
-  }, [key]);
+  }, [key, uid]);
 
   const setPersisted = (updater) => {
     setV(prev => {
@@ -578,20 +585,93 @@ function App() {
   const [sales, setSales] = usePersist('bm_sales', []);
   const [shake, setShake] = useState(0);
 
-  const handleLogin = (e) => {
+  const [loginEmail, setLoginEmail] = useState(() => { try { return localStorage.getItem('bmx_last_email') || ''; } catch (e) { return ''; } });
+  const [changingEmail, setChangingEmail] = useState(false);
+  const [legacyMode, setLegacyMode] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [fbUser, setFbUser] = useState(null);
+  const [authMsg, setAuthMsg] = useState('');
+  const [loginBusy, setLoginBusy] = useState(false);
+
+  const enterAs = (u) => {
+    setRole(u.role);
+    setCurrentUserId(u.id);
+    setActiveTab((PERMS[u.role] || ['historial'])[0]);
+    setIsAuthed(true);
+    setLoginError(false);
+    setAuthMsg('');
+  };
+
+  // Sesión de Firebase: se mantiene en este dispositivo
+  useEffect(() => auth.onAuthStateChanged(u => { setFbUser(u); setAuthReady(true); }), []);
+
+  // Cuando hay sesión de Firebase, buscar el usuario del sistema con ese correo
+  useEffect(() => {
+    if (!fbUser || isAuthed) return;
+    const mail = (fbUser.email || '').toLowerCase();
+    const u = users.find(x => (x.email || '').trim().toLowerCase() === mail && !x.suspended);
+    if (u) { enterAs(u); return; }
+    // los usuarios pueden tardar un momento en llegar desde la nube
+    const t = setTimeout(() => {
+      setAuthMsg('El correo ' + fbUser.email + ' no está asignado a ningún usuario activo. Pedile al administrador que lo agregue en Configuración > Usuarios.');
+      auth.signOut();
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [fbUser, users, isAuthed]);
+
+  const failLogin = (msg) => { setAuthMsg(msg || ''); setLoginError(true); setShake(s => s + 1); };
+
+  const handleLogin = async (e) => {
     e.preventDefault();
-    const u = users.find(x => x.username.toLowerCase() === loginUser.trim().toLowerCase() && x.password === loginPass && !x.suspended);
-    if (u) {
-      setRole(u.role);
-      setCurrentUserId(u.id);
-      setActiveTab((PERMS[u.role] || ['historial'])[0]);
-      setIsAuthed(true);
-      setLoginError(false);
-    } else {
-      setLoginError(true);
-      setShake(s => s + 1);
+    if (legacyMode) {
+      const u = users.find(x => x.username.toLowerCase() === loginUser.trim().toLowerCase() && x.password === loginPass && !x.suspended);
+      if (u) enterAs(u); else failLogin('Usuario o contraseña incorrectos.');
+      setLoginPass('');
+      return;
     }
-    setLoginPass('');
+    const email = loginEmail.trim().toLowerCase();
+    if (!email || !loginPass) return failLogin('Ingresá tu correo y contraseña.');
+    setLoginBusy(true); setAuthMsg(''); setLoginError(false);
+    try {
+      await auth.signInWithEmailAndPassword(email, loginPass);
+      try { localStorage.setItem('bmx_last_email', email); } catch (er) {}
+      setLoginEmail(email); setChangingEmail(false);
+    } catch (err) {
+      const c = err && err.code;
+      failLogin(c === 'auth/too-many-requests' ? 'Demasiados intentos. Esperá unos minutos o restablecé tu contraseña.'
+        : c === 'auth/network-request-failed' ? 'Sin conexión a internet.'
+        : c === 'auth/operation-not-allowed' ? 'El acceso con correo no está activado en Firebase (Authentication > Sign-in method).'
+        : 'Correo o contraseña incorrectos.');
+    }
+    setLoginPass(''); setLoginBusy(false);
+  };
+
+  const resetPassword = async () => {
+    const email = loginEmail.trim().toLowerCase();
+    if (!email) return failLogin('Escribí tu correo primero.');
+    try { await auth.sendPasswordResetEmail(email); setLoginError(false); setAuthMsg('Te enviamos un correo para restablecer la contraseña. Revisá también spam.'); }
+    catch (err) { failLogin('No se pudo enviar el correo. Revisá que esté bien escrito.'); }
+  };
+
+  const logout = () => { try { auth.signOut(); } catch (e) {} setIsAuthed(false); setLoginUser(''); setLoginPass(''); setAuthMsg(''); setLoginError(false); };
+
+  // Crear el acceso de Firebase para un usuario del sistema (sin cerrar la sesión actual)
+  const createAccess = async (u) => {
+    const email = (u.email || '').trim().toLowerCase();
+    if (!email) return alert('Primero escribí el correo del usuario.');
+    if ((u.password || '').length < 6) return alert('Firebase pide una contraseña de al menos 6 caracteres. Cambiala en el campo Contraseña y probá de nuevo.');
+    try {
+      const sec = firebase.apps.find(a => a.name === 'sec') || firebase.initializeApp(firebaseConfig, 'sec');
+      await sec.auth().createUserWithEmailAndPassword(email, u.password);
+      await sec.auth().signOut();
+      alert('Acceso creado. ' + email + ' ya puede entrar con su contraseña.');
+    } catch (err) {
+      const c = err && err.code;
+      alert(c === 'auth/email-already-in-use' ? 'Ese correo ya tiene acceso creado.'
+        : c === 'auth/operation-not-allowed' ? 'Activá "Correo/contraseña" en Firebase > Authentication > Sign-in method.'
+        : c === 'auth/invalid-email' ? 'El correo no es válido.'
+        : 'No se pudo crear el acceso: ' + ((err && err.message) || err));
+    }
   };
 
   // Navigation State
@@ -1063,7 +1143,7 @@ function App() {
   const [expForm, setExpForm] = useState({ date: TODAY_STR, category: EXPENSE_CATS[0], concept: '', amount: '' });
   const [editingPayId, setEditingPayId] = useState(null);
   const [receiptView, setReceiptView] = useState(null);
-  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'barbero' });
+  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'barbero' });
   const canPay = (PERMS[role] || []).includes('pagos');
 
   const openBooking = (date, time, barberId) => {
@@ -1099,8 +1179,8 @@ function App() {
     if (!name || !newUser.password) return alert('Ingrese usuario y contraseña.');
     if (role !== 'tecnico' && newUser.role === 'tecnico') return;
     if (users.some(x => x.username.toLowerCase() === name.toLowerCase())) return alert('Ese usuario ya existe.');
-    setUsers([...users, { id: `u-${Date.now()}`, username: name, password: newUser.password, role: newUser.role, barberId: newUser.barberId || '' }]);
-    setNewUser({ username: '', password: '', role: 'barbero' });
+    setUsers([...users, { id: `u-${Date.now()}`, username: name, email: (newUser.email || '').trim().toLowerCase(), password: newUser.password, role: newUser.role, barberId: newUser.barberId || '' }]);
+    setNewUser({ username: '', email: '', password: '', role: 'barbero' });
   };
   const addExpense = (e) => {
     e.preventDefault();
@@ -1630,6 +1710,16 @@ function App() {
   const tabs = ALL_TABS.filter(x => (PERMS[role] || []).includes(x.id));
   const birthdayToday = birthdayClients.some(c => c.isToday);
 
+  if (!isAuthed && !authReady) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center"><style>{GLOBAL_CSS}</style><Logo className="h-24" /></div>
+    );
+  }
+  if (!isAuthed && fbUser) {
+    return (
+      <div className="min-h-screen bg-black text-neutral-100 flex flex-col items-center justify-center gap-4 p-6 text-center"><style>{GLOBAL_CSS}</style><Logo className="h-24" /><p className="text-sm text-neutral-400">Entrando…</p></div>
+    );
+  }
   if (!isAuthed) {
     const fieldCls = 'w-full bg-[#141414] border border-[#2b2822] focus:border-white rounded-xl pl-11 pr-4 py-3 text-sm text-neutral-100 placeholder-neutral-600 outline-none transition-all';
     return (
@@ -1649,28 +1739,48 @@ function App() {
             <div className="w-full max-w-sm login-in">
               <div className="lg:hidden flex justify-center mb-8"><Logo className="h-36" /></div>
               <h1 className="text-2xl text-white">Iniciar sesión</h1>
-              <p className="text-sm text-neutral-500 mt-1 mb-8">Ingresá tus credenciales para acceder al panel.</p>
+              <p className="text-sm text-neutral-500 mt-1 mb-8">Ingresá tu correo y contraseña para acceder al panel.</p>
 
               <form key={shake} onSubmit={handleLogin} className="space-y-5" style={loginError ? { animation: 'shake .45s' } : undefined}>
-                <div>
-                  <label className="block text-xs text-neutral-400 mb-2">Usuario</label>
-                  <div className="relative">
-                    <User className="w-4 h-4 absolute left-4 top-3.5 text-neutral-500" />
-                    <input type="text" autoComplete="username" placeholder="Tu usuario" value={loginUser} onChange={e => setLoginUser(e.target.value)} className={fieldCls} />
+                {legacyMode ? (
+                  <div>
+                    <label className="block text-xs text-neutral-400 mb-2">Usuario</label>
+                    <div className="relative">
+                      <User className="w-4 h-4 absolute left-4 top-3.5 text-neutral-500" />
+                      <input type="text" autoComplete="username" placeholder="Tu usuario" value={loginUser} onChange={e => setLoginUser(e.target.value)} className={fieldCls} />
+                    </div>
                   </div>
-                </div>
+                ) : (loginEmail && !changingEmail) ? (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-[#2b2822] bg-[#141414] px-4 py-3">
+                    <div className="min-w-0"><p className="text-[11px] text-neutral-500">Ingresar como</p><p className="text-sm text-white truncate">{loginEmail}</p></div>
+                    <button type="button" onClick={() => setChangingEmail(true)} className="text-xs text-[#d4af37] hover:underline shrink-0">Cambiar</button>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs text-neutral-400 mb-2">Correo</label>
+                    <div className="relative">
+                      <User className="w-4 h-4 absolute left-4 top-3.5 text-neutral-500" />
+                      <input type="email" autoComplete="email" inputMode="email" placeholder="tucorreo@gmail.com" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className={fieldCls} />
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs text-neutral-400 mb-2">Contraseña</label>
                   <div className="relative">
                     <Lock className="w-4 h-4 absolute left-4 top-3.5 text-neutral-500" />
-                    <input type={showPass ? 'text' : 'password'} autoComplete="current-password" placeholder="Tu contraseña" value={loginPass} onChange={e => setLoginPass(e.target.value)} className={fieldCls + ' pr-11'} />
+                    <input type={showPass ? 'text' : 'password'} autoFocus={!legacyMode && !!loginEmail && !changingEmail} autoComplete="current-password" placeholder="Tu contraseña" value={loginPass} onChange={e => setLoginPass(e.target.value)} className={fieldCls + ' pr-11'} />
                     <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-3 text-neutral-500 hover:text-white" aria-label="Mostrar contraseña">
                       <Eye className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-                {loginError && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">Usuario o contraseña incorrectos.</p>}
-                <button type="submit" className="w-full py-3 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black font-semibold text-sm">Ingresar</button>
+                {authMsg && <p className={'text-xs rounded-lg px-3 py-2 border ' + (loginError || /no está asignado|Sin conexión|no se pudo/i.test(authMsg) ? 'text-red-400 bg-red-500/10 border-red-500/20' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20')}>{authMsg}</p>}
+                {loginError && !authMsg && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{legacyMode ? 'Usuario o contraseña incorrectos.' : 'Correo o contraseña incorrectos.'}</p>}
+                <button type="submit" disabled={loginBusy} className="w-full py-3 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] disabled:opacity-60 text-black font-semibold text-sm">{loginBusy ? 'Ingresando…' : 'Ingresar'}</button>
+                <div className="flex items-center justify-between gap-3 text-[11px]">
+                  {!legacyMode ? <button type="button" onClick={resetPassword} className="text-neutral-400 hover:text-white">¿Olvidaste tu contraseña?</button> : <span />}
+                  <button type="button" onClick={() => { setLegacyMode(!legacyMode); setAuthMsg(''); setLoginError(false); }} className="text-neutral-600 hover:text-neutral-300">{legacyMode ? 'Entrar con correo' : 'Entrar con usuario'}</button>
+                </div>
               </form>
 
               <p className="text-center text-[11px] text-neutral-600 mt-10">Acceso exclusivo del personal</p>
@@ -1710,7 +1820,7 @@ function App() {
                 <p className="text-sm font-semibold text-neutral-200">{me ? me.username : ''}</p>
                 <p className="text-xs text-neutral-400">{ROLE_LABEL[role]}</p>
               </div>
-              <button onClick={() => { setIsAuthed(false); setLoginUser(''); }} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 border border-red-600 text-xs font-semibold text-white"><LogOut className="w-4 h-4" /><span>Salir</span></button>
+              <button onClick={logout} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 border border-red-600 text-xs font-semibold text-white"><LogOut className="w-4 h-4" /><span>Salir</span></button>
             </div>
           </div>
         </div>
@@ -3006,12 +3116,14 @@ function App() {
               {users.filter(u => role === 'tecnico' || u.role !== 'tecnico').map(u => (
                 <div key={u.id} className="grid grid-cols-2 sm:grid-cols-12 gap-3 items-end p-3 sm:p-0 rounded-xl border border-[#2b2822] sm:border-0">
                   <div className="sm:col-span-3"><label className={LBL}>Usuario</label><div className="flex items-center gap-2"><label className="cursor-pointer shrink-0" title="Cambiar foto"><Avatar src={u.photo} name={u.username} size={40} /><input type="file" accept="image/*" className="hidden" onChange={photoInput(img => updateUser(u.id, { photo: img }))} /></label><input value={u.username} onChange={e => updateUser(u.id, { username: e.target.value })} className={INP} /></div></div>
+                  <div className="sm:col-span-3"><label className={LBL}>Correo (para entrar)</label><input type="email" value={u.email || ''} placeholder="correo@gmail.com" onChange={e => updateUser(u.id, { email: e.target.value.trim().toLowerCase() })} className={INP} /></div>
                   <div className="sm:col-span-3"><label className={LBL}>Contraseña</label><input value={u.password} onChange={e => updateUser(u.id, { password: e.target.value })} className={INP} /></div>
                   <div className="col-span-2 sm:col-span-4"><label className={LBL}>Rol</label>
                     <select value={u.role} onChange={e => updateUser(u.id, { role: e.target.value })} className={INP}>
                       {Object.entries(ROLE_LABEL).filter(([k]) => role === 'tecnico' || k !== 'tecnico').map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                     </select>{u.role === 'barbero' && <select value={u.barberId || ''} onChange={e => updateUser(u.id, { barberId: e.target.value })} className={INP + ' mt-2'}><option value="">Barbero vinculado…</option>{barbers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>}</div>
                   <div className="col-span-2 sm:col-span-2 flex flex-wrap gap-2 sm:justify-end">
+                    <button type="button" onClick={() => createAccess(u)} className="px-3 py-2.5 rounded-xl border border-[#d4af37]/50 text-xs text-[#d4af37] hover:bg-[#d4af37]/10">Crear acceso</button>
                     <button type="button" onClick={() => toggleSuspend(u.id)} className="px-3 py-2.5 rounded-xl border border-[#2b2822] text-xs text-neutral-400 hover:text-amber-400 hover:border-amber-500">{u.suspended ? 'Reactivar' : 'Suspender'}</button>
                     <button type="button" onClick={() => deleteUser(u.id)} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-[#2b2822] text-xs text-neutral-400 hover:text-red-500 hover:border-red-600"><Trash2 className="w-3.5 h-3.5" />Eliminar</button>
                   </div>
@@ -3022,6 +3134,7 @@ function App() {
               <h3 className="text-white">Agregar usuario</h3>
               <div className="grid grid-cols-2 sm:grid-cols-12 gap-3 items-end">
                 <div className="sm:col-span-3"><label className={LBL}>Usuario</label><input value={newUser.username} onChange={e => setNewUser({ ...newUser, username: e.target.value })} className={INP} /></div>
+                <div className="sm:col-span-3"><label className={LBL}>Correo</label><input type="email" value={newUser.email || ''} placeholder="correo@gmail.com" onChange={e => setNewUser({ ...newUser, email: e.target.value })} className={INP} /></div>
                 <div className="sm:col-span-3"><label className={LBL}>Contraseña</label><input value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className={INP} /></div>
                 <div className="col-span-2 sm:col-span-4"><label className={LBL}>Rol</label>
                   <select value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value })} className={INP}>
