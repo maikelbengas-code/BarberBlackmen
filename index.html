@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Blackmen">
+<meta name="application-name" content="Blackmen">
+<meta name="format-detection" content="telephone=no">
 <title>Blackmen Barbería</title>
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -80,6 +82,30 @@ input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-dat
 @media (max-width: 767px) {
   body:has(input:focus:not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea:focus, select:focus) nav.fixed.bottom-0 { display: none; }
 }
+<style id="app-feel">
+@keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 767px) {
+  body { -webkit-user-select: none; user-select: none; }
+  input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
+  img { -webkit-user-drag: none; }
+  header { padding-top: env(safe-area-inset-top); }
+  header button span { display: none; }
+  header button { padding: 10px; }
+  header button svg { width: 20px; height: 20px; }
+  main h2 { font-size: 1.35rem; }
+  button:not(:disabled):active { opacity: .85; }
+  nav.fixed.bottom-0 { background: rgba(8,8,8,.9) !important; -webkit-backdrop-filter: saturate(180%) blur(22px); backdrop-filter: saturate(180%) blur(22px); border-top-width: .5px; }
+  nav.fixed.bottom-0 button { min-width: 0 !important; }
+  nav.fixed.bottom-0 button:active { opacity: .6; }
+  /* Ventanas emergentes como hojas inferiores (bottom sheet) */
+  .fixed.inset-0.flex.items-center.justify-center:not([class*="z-[60]"]) { align-items: flex-end; padding: 0 !important; }
+  .fixed.inset-0.flex.items-center.justify-center:not([class*="z-[60]"]) > div { width: 100%; max-width: none !important; max-height: 92dvh; border-radius: 22px 22px 0 0; padding-bottom: calc(1rem + env(safe-area-inset-bottom)); animation: slideUp .3s cubic-bezier(.2,.8,.2,1) both; }
+  .fixed.inset-0.flex.items-center.justify-center:not([class*="z-[60]"]) > div::before { content: ''; display: block; width: 40px; height: 4px; border-radius: 2px; background: #555; margin: 0 auto 12px; }
+}
+@media (max-width: 480px) {
+  main .grid.grid-cols-3.gap-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (display-mode: standalone) { html, body { overscroll-behavior: none; } }
 </style>
 </head>
 <body>
@@ -88,6 +114,7 @@ input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-dat
 const { useState, useMemo, useEffect } = React;
 const LUCIDE = window.LucideReact || window.lucideReact || window['lucide-react'];
 const { ChevronDown, Calendar, Clock, User, Phone, Gift, PlusCircle, Search, CheckCircle, XCircle, MessageSquare, Copy, ExternalLink, Scissors, Users, TrendingUp, DollarSign, Filter, UserPlus, AlertTriangle, ChevronRight, Shield, Edit, Trash2, Check, Award, Sparkles, Percent, RefreshCw, Eye, Crown, Flame, Palette, Droplets, Lock, LogOut, Settings, UserCog, Wallet, Receipt, ImagePlus, Pencil, Package, LayoutDashboard } = LUCIDE;
+const MoreIcon = LUCIDE.Menu || LUCIDE.LayoutGrid || ChevronDown;
 
 // --- INITIAL MOCK DATA ---
 const INITIAL_BARBERS = [
@@ -740,6 +767,9 @@ function App() {
 
   // Navigation State
   const [activeTab, setActiveTab] = useState('historial');
+  const [moreOpen, setMoreOpen] = useState(false);
+  const tap = () => { try { navigator.vibrate && navigator.vibrate(8); } catch (e) {} };
+  useEffect(() => { if (window.innerWidth < 768) window.scrollTo(0, 0); }, [activeTab]);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [bdayOpen, setBdayOpen] = useState(false);
   const [goals, setGoals] = usePersist('bm_goals', {});
@@ -1895,12 +1925,12 @@ function App() {
       </header>
 
       {/* NAVEGACIÓN INFERIOR (celular) */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-black/95 backdrop-blur border-t border-[#2b2822] flex overflow-x-auto no-scrollbar" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        {tabs.map(tb => {
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-black/95 backdrop-blur border-t border-[#2b2822] flex" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        {(tabs.length > 5 ? tabs.slice(0, 4) : tabs).map(tb => {
           const Icon = tb.icon;
           const on = activeTab === tb.id;
           return (
-            <button key={tb.id} onClick={() => setActiveTab(tb.id)}
+            <button key={tb.id} onClick={() => { setActiveTab(tb.id); setMoreOpen(false); tap(); }}
               className={`relative flex-1 min-w-[68px] flex flex-col items-center gap-1 py-2.5 text-[10px] ${on ? 'text-[#d4af37]' : 'text-neutral-500'}`}>
               {on && <span className="absolute top-0 inset-x-4 h-0.5 bg-[#d4af37]"></span>}
               <Icon className="w-5 h-5" strokeWidth={on ? 2 : 1.5} />
@@ -1909,7 +1939,36 @@ function App() {
             </button>
           );
         })}
+        {tabs.length > 5 && (() => {
+          const inMore = tabs.slice(4).some(t => t.id === activeTab);
+          return (
+            <button onClick={() => { setMoreOpen(o => !o); tap(); }} className={`relative flex-1 min-w-[68px] flex flex-col items-center gap-1 py-2.5 text-[10px] ${inMore || moreOpen ? 'text-[#d4af37]' : 'text-neutral-500'}`}>
+              {inMore && <span className="absolute top-0 inset-x-4 h-0.5 bg-[#d4af37]"></span>}
+              <MoreIcon className="w-5 h-5" strokeWidth={inMore ? 2 : 1.5} />
+              <span>Más</span>
+              {birthdayToday && tabs.slice(4).some(t => t.id === 'clientes') && <span className="absolute top-1.5 right-5 w-1.5 h-1.5 rounded-full bg-red-500"></span>}
+            </button>
+          );
+        })()}
       </nav>
+      {moreOpen && tabs.length > 5 && (
+        <div className="md:hidden fixed inset-0 z-[35] bg-black/70" onClick={() => setMoreOpen(false)}>
+          <div className="absolute inset-x-3 bg-[#141414] border border-[#2b2822] rounded-3xl p-4" style={{ bottom: 'calc(72px + env(safe-area-inset-bottom))', animation: 'slideUp .28s cubic-bezier(.2,.8,.2,1) both' }} onClick={e => e.stopPropagation()}>
+            <div className="grid grid-cols-3 gap-3">
+              {tabs.slice(4).map(tb => {
+                const Icon = tb.icon;
+                const on = activeTab === tb.id;
+                return (
+                  <button key={tb.id} onClick={() => { setActiveTab(tb.id); setMoreOpen(false); tap(); }} className={`flex flex-col items-center gap-2 py-4 rounded-2xl border text-xs ${on ? 'bg-[#d4af37] text-black border-[#d4af37] font-semibold' : 'border-[#2b2822] text-neutral-300'}`}>
+                    <Icon className="w-6 h-6" strokeWidth={1.5} />
+                    <span>{tb.short}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MAIN CONTAINER */}
       <div className="md:flex">
