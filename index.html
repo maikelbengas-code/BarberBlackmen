@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Blackmen">
 <meta name="application-name" content="Blackmen">
+<meta name="app-version" content="1.1.0">
 <meta name="format-detection" content="telephone=no">
 <title>Blackmen Barbería</title>
 <link rel="icon" href="favicon.ico" sizes="any">
@@ -319,6 +320,18 @@ const INITIAL_PAYMENTS = [
   { id: 'p1', date: TODAY_STR, barberId: 'b3', clientName: 'Fernando Benítez', concept: 'Corte Tradicional Blackmen', method: 'Efectivo', amount: 15000, bookingId: 'bk-100' },
   { id: 'p2', date: daysAgo(2), barberId: 'b1', clientName: 'Diego Martínez', concept: 'Combo Blackmen Premium', method: 'Transferencia', amount: 24000, bookingId: '' },
   { id: 'p3', date: daysAgo(5), barberId: 'b2', clientName: 'Roberto Gómez', concept: 'Barba VIP', method: 'Tarjeta', amount: 12000, bookingId: '' },
+];
+// ===== Versiones de la app / web (subí el número cada vez que publiques un cambio) =====
+const APP_VERSION = '1.1.0';
+const APP_BUILD = '2026-11-26';
+const CHANGELOG = [
+  { v: '1.1.0', date: '2026-11-26', notes: [
+    'Recepción: salario base al agregar al equipo y aviso si la cuenta no está vinculada.',
+    'Inventario: categorías Bebidas, Productos y Otros (con campo para escribir el objeto).',
+    'Caja: se puede eliminar un pago una vez anulado.',
+    'Se agregó el control de versiones.',
+  ] },
+  { v: '1.0.0', date: '2026-11-03', notes: ['Versión inicial de Blackmen Control.'] },
 ];
 const PRODUCT_CATS = ['Bebidas', 'Productos', 'Otros'];
 const prodCat = (x) => PRODUCT_CATS.includes(x && x.category) ? x.category : ((x && x.category) ? 'Productos' : 'Otros'); // 'Café' y 'Cuidado del cabello' antiguos pasan a 'Productos'
@@ -749,9 +762,6 @@ function App() {
   const logout = () => {
     try { auth.signOut(); } catch (e) {}
     setIsAuthed(false); setLoginUser(''); setLoginPass(''); setAuthMsg(''); setLoginError(false);
-    // Salir directo: cierra la app/pestaña; si el navegador no lo permite, deja la pantalla en blanco
-    try { window.close(); } catch (e) {}
-    setTimeout(() => { try { window.location.replace('about:blank'); } catch (e) {} }, 250);
   };
 
   // Crear el acceso de Firebase para un usuario del sistema (sin cerrar la sesión actual)
@@ -1910,6 +1920,7 @@ function App() {
               </form>
 
               <p className="text-center text-[11px] text-neutral-600 mt-10">Acceso exclusivo del personal</p>
+              <p className="text-center text-[10px] text-neutral-700 mt-1">Versión {APP_VERSION}</p>
             </div>
           </div>
         </div>
@@ -3200,6 +3211,21 @@ function App() {
         {/* ===== CONFIGURACIÓN ===== */}
         {activeTab === 'config' && (
           <div className="space-y-6">
+          <div className={CARD + ' space-y-3'}>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-white">Versión de la app</h2>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#d4af37] text-black">v{APP_VERSION}</span>
+            </div>
+            <p className="text-[11px] text-neutral-500">Última actualización: {APP_BUILD.split('-').reverse().join('/')} · Es la misma versión en la app instalada y en la web.</p>
+            <div className="divide-y divide-neutral-800 max-h-64 overflow-y-auto">
+              {CHANGELOG.map(c => (
+                <div key={c.v} className="py-2.5">
+                  <p className="text-xs text-white font-semibold">v{c.v} <span className="text-neutral-500 font-normal">· {c.date.split('-').reverse().join('/')}</span></p>
+                  <ul className="mt-1 space-y-0.5">{c.notes.map((n, i) => <li key={i} className="text-[11px] text-neutral-400">• {n}</li>)}</ul>
+                </div>
+              ))}
+            </div>
+          </div>
           <div className={CARD + ' space-y-4'}>
             <div>
               <h2 className="text-white">Copia de seguridad</h2>
