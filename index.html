@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Blackmen">
 <meta name="application-name" content="Blackmen">
-<meta name="app-version" content="1.3.0">
+<meta name="app-version" content="1.3.1">
 <meta name="format-detection" content="telephone=no">
 <title>Blackmen Barbería</title>
 <link rel="icon" href="favicon.ico" sizes="any">
@@ -322,9 +322,13 @@ const INITIAL_PAYMENTS = [
   { id: 'p3', date: daysAgo(5), barberId: 'b2', clientName: 'Roberto Gómez', concept: 'Barba VIP', method: 'Tarjeta', amount: 12000, bookingId: '' },
 ];
 // ===== Versiones de la app / web (subí el número cada vez que publiques un cambio) =====
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const APP_BUILD = '2026-11-26';
 const CHANGELOG = [
+  { v: '1.3.1', date: '2026-11-26', notes: [
+    'Se quitaron los datos de ejemplo (clientes, turnos y cobros) para empezar en cero.',
+    'Configuración: botón «Poner todo en cero» (solo el técnico) para borrar los datos cargados y reiniciar estadísticas.',
+  ] },
   { v: '1.3.0', date: '2026-11-26', notes: [
     'Agenda: técnico, admin y recepción pueden ir a meses pasados (mes anterior/siguiente o elegir fecha) y eliminar turnos, servicios y cobros para que balances y gráficos se ajusten.',
   ] },
@@ -851,8 +855,8 @@ function App() {
   // App Main States
   const [barbers, setBarbers] = usePersist('bm_barbers', INITIAL_BARBERS);
   const [services, setServices] = usePersist('bm_services_v3', INITIAL_SERVICES);
-  const [clients, setClients] = usePersist('bm_clients', INITIAL_CLIENTS);
-  const [bookings, setBookings] = usePersist('bm_bookings', INITIAL_BOOKINGS);
+  const [clients, setClients] = usePersist('bm_clients', []);
+  const [bookings, setBookings] = usePersist('bm_bookings', []);
   const stylists = barbers.filter(b => b.kind !== 'recepcion');
 
   // Filter States for Statistics & History
@@ -1252,7 +1256,7 @@ function App() {
     }).filter(c => c && c.birthMonth === currMonth).sort((a, b) => a.birthDay - b.birthDay);
   }, [clients]);
 
-  const [payments, setPayments] = usePersist('bm_payments', INITIAL_PAYMENTS);
+  const [payments, setPayments] = usePersist('bm_payments', []);
   const [commissions, setCommissions] = usePersist('bm_comm', { b1: 50, b2: 50, b3: 50 });
   const [payForm, setPayForm] = useState({ bookingId: '', clientName: '', barberId: 'b1', method: 'Efectivo', amount: '', concept: '', date: TODAY_STR, receipt: '' });
 
@@ -3359,6 +3363,21 @@ function App() {
               ))}
             </div>
           </div>
+          {role === 'tecnico' && (
+            <div className={CARD + ' space-y-3 border-red-500/30'}>
+              <div>
+                <h2 className="text-white">Empezar desde cero</h2>
+                <p className="text-xs text-neutral-500 mt-1">Borra clientes, turnos, cobros, ventas y consumos, gastos, caja y metas para que todas las estadísticas y porcentajes queden en 0. Se conservan el equipo, los servicios, el inventario, los usuarios y los horarios. Descargá un respaldo antes.</p>
+              </div>
+              <button type="button" onClick={() => {
+                if (role !== 'tecnico') return;
+                if (!confirm('Se borrarán clientes, turnos, cobros, ventas, gastos, caja y metas. Esta acción no se puede deshacer. ¿Continuar?')) return;
+                if ((prompt('Para confirmar escribí CERO') || '').trim().toUpperCase() !== 'CERO') return alert('No se borró nada.');
+                setBookings([]); setPayments([]); setClients([]); setSales([]); setExpenses([]); setCash({}); setGoals({});
+                alert('Listo. Todo quedó en cero.');
+              }} className="px-4 py-2.5 rounded-xl border border-red-600 text-red-400 hover:bg-red-500/10 text-sm font-semibold">Poner todo en cero</button>
+            </div>
+          )}
           <div className={CARD + ' space-y-4'}>
             <div>
               <h2 className="text-white">Copia de seguridad</h2>
