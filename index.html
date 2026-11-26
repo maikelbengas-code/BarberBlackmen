@@ -272,10 +272,11 @@ const INITIAL_USERS = [
   { id: 'u3', username: 'barbero', password: '1234', role: 'barbero', barberId: 'b1' },
   { id: 'u4', username: 'caja', password: '1234', role: 'caja' },
 ];
-const ROLE_LABEL = { tecnico: 'Técnico (principal)', admin: 'Administrador', barbero: 'Barbero', caja: 'Caja' };
+const ROLE_LABEL = { tecnico: 'Técnico (principal)', admin: 'Administrador', barbero: 'Barbero', caja: 'Caja', recepcion: 'Recepción' };
 const PERMS = {
   tecnico: ['dashboard', 'historial', 'clientes', 'servicios', 'equipo', 'mercaderia', 'inventario', 'pagos', 'gastos', 'finanzas', 'estadisticas', 'config'],
   admin: ['dashboard', 'historial', 'clientes', 'servicios', 'equipo', 'mercaderia', 'inventario', 'pagos', 'gastos', 'finanzas', 'estadisticas', 'config'],
+  recepcion: ['dashboard', 'historial', 'clientes', 'servicios', 'equipo', 'mercaderia', 'inventario', 'pagos', 'gastos', 'finanzas', 'estadisticas', 'misganancias', 'config'],
   caja: ['historial', 'clientes', 'mercaderia', 'inventario', 'pagos'],
   barbero: ['historial', 'misganancias'],
 };
@@ -786,6 +787,7 @@ function App() {
   const [services, setServices] = usePersist('bm_services_v3', INITIAL_SERVICES);
   const [clients, setClients] = usePersist('bm_clients', INITIAL_CLIENTS);
   const [bookings, setBookings] = usePersist('bm_bookings', INITIAL_BOOKINGS);
+  const stylists = barbers.filter(b => b.kind !== 'recepcion');
 
   // Filter States for Statistics & History
   const [statsPeriod, setStatsPeriod] = useState('mes'); // 'hoy', 'semana', 'quincena', 'mes', 'ano'
@@ -890,7 +892,7 @@ function App() {
 
     if (conflict) {
       // Find suggested barbers
-      const alternativeBarbers = barbers.filter(b => {
+      const alternativeBarbers = stylists.filter(b => {
         if (b.id === selectedBarberId) return false;
         const altBookings = bookings.filter(
           bk => bk.barberId === b.id && bk.date === bookingDate && bk.status !== 'Cancelado'
@@ -1314,7 +1316,8 @@ function App() {
   const [finType, setFinType] = useState('todos');
   const [saleForm, setSaleForm] = useState({ type: 'venta', productId: 'pr1', qty: 1, barberId: '', date: TODAY_STR });
   const me = users.find(u => u.id === currentUserId);
-  const myBarberId = (me && me.barberId && barbers.some(b => b.id === me.barberId)) ? me.barberId : (barbers[0] && barbers[0].id);
+  const myLinked = !!(me && me.barberId && barbers.some(b => b.id === me.barberId));
+  const myBarberId = myLinked ? me.barberId : (barbers[0] && barbers[0].id);
 
   const slotIssue = useMemo(() => {
     if (!bookingDate || !bookingTime) return null;
@@ -1348,11 +1351,16 @@ function App() {
     const sold = sales.filter(x => x.type === 'venta' && x.barberId === id && inP(x.date));
     const cons = sales.filter(x => x.type === 'consumo' && x.barberId === id && inP(x.date)).reduce((a, x) => a + x.total, 0);
     const week = payments.filter(x => x.barberId === id && !x.voided && inRange(x.date, 'semana')).reduce((a, x) => a + x.amount, 0);
-    const share = Math.round(total * pc / 100);
+    const soldT = sold.reduce((a, x) => a + x.total, 0);
+    const mem = barbers.find(x => x.id === id) || {};
+    const isRec = mem.kind === 'recepcion';
+    const base = isRec ? Math.round(Number(mem.salary || 0) * (day ? 1 : ({ hoy: 1, semana: 7, quincena: 15, mes: 30, ano: 360 }[period] || 30)) / 30) : 0;
+    const share = Math.round((total + (isRec ? soldT : 0)) * pc / 100);
     return {
+      isRec, base,
       clients: new Set(bks.map(x => x.clientId)).size,
       services: bks.reduce((a, x) => a + ((x.serviceIds || []).length || 1), 0),
-      total, pc, share, cons, net: share - cons,
+      total, pc, share, cons, net: share + base - cons,
       soldQty: sold.reduce((a, x) => a + Number(x.qty || 0), 0),
       soldTotal: sold.reduce((a, x) => a + x.total, 0),
       week, goal: Number(goals[id] || 0),
@@ -1368,6 +1376,7 @@ function App() {
       ['Servicios realizados', st.services],
       ...(role === 'barbero' ? [] : [['Producción', fmt(st.total)]]),
       [role === 'barbero' ? 'Mis ganancias' : 'Comisión (' + st.pc + '%)', fmt(st.share)],
+      ...(st.isRec ? [['Salario base (del período)', fmt(st.base)]] : []),
       ['Productos vendidos', st.soldQty + (st.soldQty && role !== 'barbero' ? ' · ' + fmt(st.soldTotal) : '')],
       ['Consumo personal', '- ' + fmt(st.cons)],
     ];
@@ -1384,7 +1393,7 @@ function App() {
             <span className="text-white font-semibold text-right">{st.goal ? fmt(st.week) + ' / ' + fmt(st.goal) + ' (' + pct + '%)' : 'Sin meta definida'}</span>
           </div>
           <div className="h-2 rounded-full bg-black border border-[#2b2822] overflow-hidden"><div className="h-full bg-[#d4af37] rounded-full transition-all duration-700" style={{ width: pct + '%' }} /></div>
-          {(role === 'tecnico' || role === 'admin') && (
+          {(role === 'tecnico' || role === 'admin' || role === 'recepcion') && (
             <div className="flex items-center gap-2 text-xs text-neutral-400 pt-1"><span>Definir meta semanal (Gs.)</span>
               <input type="number" min="0" inputMode="numeric" value={goals[id] || ''} onChange={e => setGoals({ ...goals, [id]: e.target.value })} className="w-36 bg-black border border-[#2b2822] rounded-lg px-2 py-1 text-neutral-100" /></div>
           )}
@@ -1429,7 +1438,7 @@ function App() {
     setProdFormOpen(false);
   };
   const renderInventario = () => {
-    const canEdit = role === 'tecnico' || role === 'admin';
+    const canEdit = role === 'tecnico' || role === 'admin' || role === 'recepcion';
     const list = products.filter(x => merCat === 'todas' || (x.category || 'Otros') === merCat);
     const upd = (id, patch) => setProducts(products.map(q => q.id === id ? { ...q, ...patch } : q));
     const NUM = 'w-full bg-black border border-[#2b2822] rounded-lg px-2 py-1.5 text-sm text-neutral-100';
@@ -1707,16 +1716,19 @@ function App() {
     const pays = payments.filter(x => x.barberId === barberId && !x.voided && inP(x.date)).sort(byDate);
     const cons = sales.filter(x => x.type === 'consumo' && x.barberId === barberId && inP(x.date)).sort(byDate);
     const total = pays.reduce((a, x) => a + x.amount, 0);
-    const share = Math.round(total * pc / 100);
+    const stt = barberStats(barberId, period, day);
+    const share = stt.share;
+    const baseS = stt.base;
     const consT = cons.reduce((a, x) => a + x.total, 0);
     return (
       <div className="space-y-4">
         {withCards && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {role !== 'barbero' && <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Cobrado en servicios</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(total)}</p><p className="text-[10px] text-neutral-600 mt-1">{pays.length} cobros</p></div>}
+            {stt.isRec && <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Salario base</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(baseS)}</p></div>}
             <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">{role === 'barbero' ? 'Mis ganancias' : 'Mi parte (' + pc + '%)'}</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(share)}</p></div>
             <div className="bg-red-500/5 border border-red-500/30 rounded-xl p-3.5"><p className="text-[11px] text-red-400">Mis gastos (consumos)</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">- {fmt(consT)}</p></div>
-            <div className="bg-emerald-500/5 border border-emerald-500/30 rounded-xl p-3.5"><p className="text-[11px] text-emerald-400">Ganancia neta</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(share - consT)}</p></div>
+            <div className="bg-emerald-500/5 border border-emerald-500/30 rounded-xl p-3.5"><p className="text-[11px] text-emerald-400">Ganancia neta</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(share + baseS - consT)}</p></div>
           </div>
         )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1748,6 +1760,7 @@ function App() {
     );
   };
   const [newBarberName, setNewBarberName] = useState('');
+  const [newBarberSalary, setNewBarberSalary] = useState('');
   // --- Servicios (alta / edición / baja) ---
   const [svcModal, setSvcModal] = useState(null);
   const [svcFilter, setSvcFilter] = useState('todos');
@@ -1775,19 +1788,20 @@ function App() {
     setSelectedServiceIds(ids => { const f = ids.filter(i => i !== sv.id); return f.length ? f : [services.find(x => x.id !== sv.id).id]; });
   };
   const toggleSvc = (sv) => setServices(services.map(x => x.id === sv.id ? { ...x, suspended: !x.suspended } : x));
-  const addBarber = () => {
+  const addBarber = (kind) => {
     const name = newBarberName.trim();
     if (!name) return;
     if (barbers.some(b => b.name.trim().toLowerCase() === name.toLowerCase())) return alert('Ya existe un barbero con ese nombre.');
     const id = `b-${Date.now()}`;
-    setBarbers([...barbers, { id, name, status: 'active' }]);
-    setCommissions({ ...commissions, [id]: 50 });
+    setBarbers([...barbers, { id, name, status: 'active', ...(kind === 'recepcion' ? { kind: 'recepcion', salary: (role === 'tecnico' || role === 'admin') ? Math.max(0, Number(newBarberSalary) || 0) : 0 } : {}) }]);
+    setCommissions({ ...commissions, [id]: kind === 'recepcion' ? 0 : 50 });
     setNewBarberName('');
+    setNewBarberSalary('');
   };
   useEffect(() => {
     if (!barbers.length) return;
-    if (!barbers.some(b => b.id === selectedBarberId)) setSelectedBarberId(barbers[0].id);
-    if (!barbers.some(b => b.id === payForm.barberId)) setPayForm(f => ({ ...f, barberId: barbers[0].id }));
+    if (!stylists.some(b => b.id === selectedBarberId)) setSelectedBarberId((stylists[0] || barbers[0]).id);
+    if (!stylists.some(b => b.id === payForm.barberId)) setPayForm(f => ({ ...f, barberId: (stylists[0] || barbers[0]).id }));
   }, [barbers]);
 
   const ALL_TABS = [
@@ -2230,7 +2244,7 @@ function App() {
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          {(role === 'tecnico' || role === 'admin') && (
+                          {(role === 'tecnico' || role === 'admin' || role === 'recepcion') && (
                             <button
                               onClick={() => deleteClient(client)}
                               className="p-1.5 rounded-lg text-neutral-400 hover:text-red-500 hover:bg-red-500/10 transition-all"
@@ -2261,7 +2275,7 @@ function App() {
           const sc = schedule[new Date(agendaDate + 'T12:00:00').getDay()];
           const slots = [];
           if (sc && sc.on) for (let m = toMin(sc.open); m < toMin(sc.close); m += Number(slotStep)) slots.push(toHHMM(m));
-          const vb = role === 'barbero' ? barbers.filter(x => x.id === myBarberId) : agendaBarber === 'todos' ? barbers : barbers.filter(x => x.id === agendaBarber);
+          const vb = role === 'barbero' ? barbers.filter(x => x.id === myBarberId) : agendaBarber === 'todos' ? stylists : stylists.filter(x => x.id === agendaBarber);
           const minDur = Math.max(5, Math.min(...services.map(x => x.duration || 30)));
           const dayB = bookings.filter(x => x.date === agendaDate && x.status !== 'Cancelado' && vb.some(v => v.id === x.barberId));
           const sum = (arr) => arr.reduce((acc, x) => acc + x.totalPrice, 0);
@@ -2318,7 +2332,7 @@ function App() {
                   <h2 className="text-white">Agenda y turnos</h2>
                   <p className="text-xs text-neutral-500 mt-0.5">{role === 'barbero' ? 'Estos son los turnos que te asignó el administrador.' : 'Tocá una hora libre para agendar, o usá Nuevo turno para elegir la hora a mano. Verde: cobrado. Rojo: pendiente de cobro.'}</p>
                 </div>
-                {role !== 'barbero' && <button type="button" onClick={() => openBooking(agendaDate, slots[0] || '09:00', role === 'barbero' ? myBarberId : (agendaBarber !== 'todos' ? agendaBarber : (barbers[0] && barbers[0].id)))} className="shrink-0 px-4 py-2 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-xs font-semibold">+ Nuevo turno</button>}
+                {role !== 'barbero' && <button type="button" onClick={() => openBooking(agendaDate, slots[0] || '09:00', role === 'barbero' ? myBarberId : (agendaBarber !== 'todos' ? agendaBarber : (stylists[0] && stylists[0].id)))} className="shrink-0 px-4 py-2 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-xs font-semibold">+ Nuevo turno</button>}
               </div>
 
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
@@ -2339,7 +2353,7 @@ function App() {
 
               {role !== 'barbero' && (
                 <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-                  {[['todos', 'Todos'], ...barbers.map(x => [x.id, x.name])].map(([k, l]) => (
+                  {[['todos', 'Todos'], ...stylists.map(x => [x.id, x.name])].map(([k, l]) => (
                     <button key={k} onClick={() => setAgendaBarber(k)} className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap border ${agendaBarber === k ? 'bg-[#d4af37] text-black border-[#d4af37]' : 'border-[#2b2822] text-neutral-400 hover:text-white'}`}>{l}</button>
                   ))}
                 </div>
@@ -2495,7 +2509,7 @@ function App() {
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className={LBL}>Barbero</label>
                     <select value={payForm.barberId} onChange={e => setPayForm({ ...payForm, barberId: e.target.value })} className={INP}>
-                      {barbers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      {stylists.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select></div>
                   <div><label className={LBL}>Método</label>
                     <select value={payForm.method} onChange={e => setPayForm({ ...payForm, method: e.target.value })} className={INP}>
@@ -2938,7 +2952,7 @@ function App() {
                   <span className="text-[11px] text-neutral-500">Se actualiza solo · {toHHMM(nowM)} hs</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {barbers.map(br => {
+                  {stylists.map(br => {
                     const todays = bookings.filter(b => b.barberId === br.id && b.date === TODAY_STR && b.status !== 'Cancelado' && b.status !== 'Ausente').sort((x, y) => x.time.localeCompare(y.time));
                     const cur = todays.find(b => b.status === 'Pendiente' && toMin(b.time) <= nowM && nowM < toMin(b.time) + (Number(b.duration) || 0));
                     const next = todays.find(b => b.status === 'Pendiente' && toMin(b.time) > nowM);
@@ -3032,7 +3046,7 @@ function App() {
                       <Avatar src={b.photo} name={b.name} size={56} />
                       <div className="flex-1 min-w-0">
                         <p className="text-base font-semibold text-white truncate">{b.name}</p>
-                        <p className="text-xs text-neutral-500">Comisión {st.pc}%</p>
+                        <p className="text-xs text-neutral-500">{b.kind === 'recepcion' ? 'Recepción · ' : ''}Comisión {st.pc}%</p>
                       </div>
                       <ChevronRight className="w-5 h-5 text-neutral-500 shrink-0" />
                     </div>
@@ -3052,9 +3066,10 @@ function App() {
                 ))}
 
                 <div className="border-2 border-dashed border-[#2b2822] rounded-2xl p-5 flex flex-col justify-center gap-3 min-h-[160px]">
-                  <div className="flex items-center gap-2 text-neutral-300"><UserPlus className="w-5 h-5" /><p className="text-sm font-semibold">Agregar barbero</p></div>
+                  <div className="flex items-center gap-2 text-neutral-300"><UserPlus className="w-5 h-5" /><p className="text-sm font-semibold">Agregar al equipo</p></div>
                   <input value={newBarberName} onChange={e => setNewBarberName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addBarber(); }} placeholder="Nombre del nuevo barbero" className={INP} />
-                  <button type="button" onClick={addBarber} className="py-2.5 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold">Agregar</button>
+                  {(role === 'tecnico' || role === 'admin') && <input type="number" min="0" inputMode="numeric" value={newBarberSalary} onChange={e => setNewBarberSalary(e.target.value)} placeholder="Salario base mensual en Gs. (solo para Recepción)" className={INP} />}
+                  <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => addBarber()} className="py-2.5 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold">Barbero</button><button type="button" onClick={() => addBarber('recepcion')} className="py-2.5 rounded-xl border border-[#d4af37] text-[#9a7b14] text-sm font-semibold">Recepción</button></div>
                 </div>
               </div>
             </div>
@@ -3063,7 +3078,7 @@ function App() {
 
         {/* ===== MERCADERÍA ===== */}
         {(activeTab === 'mercaderia' || activeTab === 'inventario') && (() => {
-          const canEdit = role === 'tecnico' || role === 'admin';
+          const canEdit = role === 'tecnico' || role === 'admin' || role === 'recepcion';
           const list = products.filter(x => merCat === 'todas' || (x.category || 'Otros') === merCat);
           const recent = [...sales].sort((x, y) => (y.date + (y.time || '')).localeCompare(x.date + (x.time || ''))).slice(0, 15);
           const bName = (id) => (barbers.find(x => x.id === id) || {}).name || '';
@@ -3138,7 +3153,13 @@ function App() {
         })()}
 
         {/* ===== MIS GANANCIAS (barbero) ===== */}
-        {activeTab === 'misganancias' && (
+        {activeTab === 'misganancias' && !myLinked && (
+          <div className={CARD + ' text-center space-y-2'}>
+            <h2 className="text-white">Cuenta sin vincular</h2>
+            <p className="text-xs text-neutral-400">Tu usuario todavía no está vinculado a un miembro del equipo. Pedile al técnico o al administrador que lo vincule en Configuración > Usuarios (campo «Barbero vinculado»).</p>
+          </div>
+        )}
+        {activeTab === 'misganancias' && myLinked && (
           <div className="space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -3248,7 +3269,7 @@ function App() {
                   <div className="col-span-2 sm:col-span-4"><label className={LBL}>Rol</label>
                     <select value={u.role} onChange={e => updateUser(u.id, { role: e.target.value })} className={INP}>
                       {Object.entries(ROLE_LABEL).filter(([k]) => role === 'tecnico' || k !== 'tecnico').map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                    </select>{u.role === 'barbero' && <select value={u.barberId || ''} onChange={e => updateUser(u.id, { barberId: e.target.value })} className={INP + ' mt-2'}><option value="">Barbero vinculado…</option>{barbers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>}</div>
+                    </select>{(u.role === 'barbero' || u.role === 'recepcion') && <select value={u.barberId || ''} onChange={e => updateUser(u.id, { barberId: e.target.value })} className={INP + ' mt-2'}><option value="">Barbero vinculado…</option>{barbers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>}</div>
                   <div className="col-span-2 sm:col-span-2 flex flex-wrap gap-2 sm:justify-end">
                     <button type="button" onClick={() => createAccess(u)} className="px-3 py-2.5 rounded-xl border border-[#d4af37]/50 text-xs text-[#d4af37] hover:bg-[#d4af37]/10">Crear acceso</button>
                     <button type="button" onClick={() => toggleSuspend(u.id)} className="px-3 py-2.5 rounded-xl border border-[#2b2822] text-xs text-neutral-400 hover:text-amber-400 hover:border-amber-500">{u.suspended ? 'Reactivar' : 'Suspender'}</button>
@@ -3266,7 +3287,7 @@ function App() {
                 <div className="col-span-2 sm:col-span-4"><label className={LBL}>Rol</label>
                   <select value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value })} className={INP}>
                     {Object.entries(ROLE_LABEL).filter(([k]) => role === 'tecnico' || k !== 'tecnico').map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                  </select>{newUser.role === 'barbero' && <select value={newUser.barberId || ''} onChange={e => setNewUser({ ...newUser, barberId: e.target.value })} className={INP + ' mt-2'}><option value="">Barbero vinculado…</option>{barbers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>}</div>
+                  </select>{(newUser.role === 'barbero' || newUser.role === 'recepcion') && <select value={newUser.barberId || ''} onChange={e => setNewUser({ ...newUser, barberId: e.target.value })} className={INP + ' mt-2'}><option value="">Barbero vinculado…</option>{barbers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>}</div>
                 <div className="col-span-2 sm:col-span-2"><button type="button" onClick={addUser} className="w-full py-2.5 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm font-semibold">Agregar</button></div>
               </div>
             </div>
@@ -3543,7 +3564,7 @@ function App() {
                           onChange={e => setSelectedBarberId(e.target.value)}
                           className="w-full mt-1 bg-black border border-[#2b2822] rounded-xl px-3 py-2.5 text-sm text-neutral-100 outline-none focus:border-[#d4af37]"
                         >
-                          {barbers.map(b => (
+                          {stylists.map(b => (
                             <option key={b.id} value={b.id}>{b.name}</option>
                           ))}
                         </select>
@@ -3775,6 +3796,15 @@ function App() {
                       : <span className="text-white">{st.pc}%</span>}
                   </div>
                   <div className="flex justify-between text-sm"><span className="text-neutral-400">Total cobrado</span><span className="font-semibold text-white">{fmt(st.total)}</span></div>
+                  {b.kind === 'recepcion' && (
+                    <div className="flex items-center justify-between text-xs text-neutral-400">
+                      <span>Salario base mensual (Gs.)</span>
+                      {(role === 'tecnico' || role === 'admin')
+                        ? <input type="number" min="0" inputMode="numeric" value={b.salary ?? 0} onChange={e => setBarbers(barbers.map(x => x.id === b.id ? { ...x, salary: Number(e.target.value) } : x))} className="w-36 bg-black border border-[#2b2822] rounded-lg px-2 py-1 text-right text-white outline-none focus:border-[#d4af37]" />
+                        : <span className="text-white">{fmt(b.salary)}</span>}
+                    </div>
+                  )}
+                  {st.isRec && <div className="flex justify-between text-sm"><span className="text-neutral-400">Salario base (del período)</span><span className="font-semibold text-white">{fmt(st.base)}</span></div>}
                   <div className="flex justify-between text-sm"><span className="text-neutral-400">Parte del barbero</span><span className="font-semibold text-white">{fmt(st.share)}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-neutral-400">Consumos (mercadería)</span><span className="font-semibold text-red-400">- {fmt(st.cons)}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-neutral-200 font-semibold">Neto del barbero</span><span className="font-bold text-emerald-400">{fmt(st.net)}</span></div>
@@ -3944,7 +3974,7 @@ function App() {
                   onChange={e => setSelectedClient({ ...selectedClient, preferredBarberId: e.target.value })}
                   className="w-full mt-1 bg-black border border-[#2b2822] rounded-lg p-2.5 text-neutral-100 outline-none focus:border-[#d4af37]"
                 >
-                  {barbers.map(b => (
+                  {stylists.map(b => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </select>
