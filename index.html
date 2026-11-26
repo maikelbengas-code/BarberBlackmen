@@ -320,7 +320,8 @@ const INITIAL_PAYMENTS = [
   { id: 'p2', date: daysAgo(2), barberId: 'b1', clientName: 'Diego Martínez', concept: 'Combo Blackmen Premium', method: 'Transferencia', amount: 24000, bookingId: '' },
   { id: 'p3', date: daysAgo(5), barberId: 'b2', clientName: 'Roberto Gómez', concept: 'Barba VIP', method: 'Tarjeta', amount: 12000, bookingId: '' },
 ];
-const PRODUCT_CATS = ['Bebidas', 'Café', 'Cuidado del cabello', 'Otros'];
+const PRODUCT_CATS = ['Bebidas', 'Productos', 'Otros'];
+const prodCat = (x) => PRODUCT_CATS.includes(x && x.category) ? x.category : ((x && x.category) ? 'Productos' : 'Otros'); // 'Café' y 'Cuidado del cabello' antiguos pasan a 'Productos'
 const METHODS = ['Efectivo', 'Transferencia', 'Tarjeta'];
 const fmt = (n) => Number(n || 0).toLocaleString('es-PY') + ' Gs.';
 const CARD = 'bg-[#141414] border border-[#2b2822] rounded-xl p-4 sm:p-6';
@@ -745,7 +746,13 @@ function App() {
     catch (err) { failLogin('No se pudo enviar el correo. Revisá que esté bien escrito.'); }
   };
 
-  const logout = () => { try { auth.signOut(); } catch (e) {} setIsAuthed(false); setLoginUser(''); setLoginPass(''); setAuthMsg(''); setLoginError(false); };
+  const logout = () => {
+    try { auth.signOut(); } catch (e) {}
+    setIsAuthed(false); setLoginUser(''); setLoginPass(''); setAuthMsg(''); setLoginError(false);
+    // Salir directo: cierra la app/pestaña; si el navegador no lo permite, deja la pantalla en blanco
+    try { window.close(); } catch (e) {}
+    setTimeout(() => { try { window.location.replace('about:blank'); } catch (e) {} }, 250);
+  };
 
   // Crear el acceso de Firebase para un usuario del sistema (sin cerrar la sesión actual)
   const createAccess = async (u) => {
@@ -778,7 +785,7 @@ function App() {
   const [cajaDay, setCajaDay] = useState(TODAY_STR);
   const [repTab, setRepTab] = useState('resumen');
   const [prodFormOpen, setProdFormOpen] = useState(false);
-  const [prodForm, setProdForm] = useState({ name: '', category: 'Bebidas', price: '', stock: '', min: '', img: '' });
+  const [prodForm, setProdForm] = useState({ name: '', category: 'Bebidas', detail: '', price: '', stock: '', min: '', img: '' });
   const [openBarber, setOpenBarber] = useState('');
   const [svcQuery, setSvcQuery] = useState('');
   
@@ -1205,6 +1212,11 @@ function App() {
     setPayments(payments.map(x => x.id === pm.id ? { ...x, voided: true } : x));
     if (pm.bookingId) handleUpdateBookingStatus(pm.bookingId, 'Pendiente');
   };
+  const deletePayment = (pm) => {
+    if (!pm.voided) return;
+    if (!confirm('¿Eliminar definitivamente este pago anulado? No se puede deshacer.')) return;
+    setPayments(payments.filter(x => x.id !== pm.id));
+  };
   const restorePayment = (pm) => {
     setPayments(payments.map(x => x.id === pm.id ? { ...x, voided: false } : x));
     if (pm.bookingId) handleUpdateBookingStatus(pm.bookingId, 'Completado');
@@ -1432,14 +1444,15 @@ function App() {
     e.preventDefault();
     const price = Number(prodForm.price);
     if (!prodForm.name.trim() || !price || price <= 0) return alert('Ingrese nombre y precio válido.');
+    if (prodForm.category === 'Otros' && !prodForm.detail.trim()) return alert('Escribí qué objeto es (campo «Escribí el objeto»).');
     if (products.some(q => q.name.trim().toLowerCase() === prodForm.name.trim().toLowerCase())) return alert('Ese producto ya existe. Editá el que está en la lista.');
-    setProducts([...products, { id: `pr-${Date.now()}`, name: prodForm.name.trim(), category: prodForm.category, price, stock: Number(prodForm.stock) || 0, minStock: Number(prodForm.min) || 0, img: prodForm.img, suspended: false }]);
-    setProdForm({ name: '', category: 'Bebidas', price: '', stock: '', min: '', img: '' });
+    setProducts([...products, { id: `pr-${Date.now()}`, name: prodForm.name.trim(), category: prodForm.category, ...(prodForm.category === 'Otros' ? { detail: prodForm.detail.trim() } : {}), price, stock: Number(prodForm.stock) || 0, minStock: Number(prodForm.min) || 0, img: prodForm.img, suspended: false }]);
+    setProdForm({ name: '', category: 'Bebidas', detail: '', price: '', stock: '', min: '', img: '' });
     setProdFormOpen(false);
   };
   const renderInventario = () => {
     const canEdit = role === 'tecnico' || role === 'admin' || role === 'recepcion';
-    const list = products.filter(x => merCat === 'todas' || (x.category || 'Otros') === merCat);
+    const list = products.filter(x => merCat === 'todas' || prodCat(x) === merCat);
     const upd = (id, patch) => setProducts(products.map(q => q.id === id ? { ...q, ...patch } : q));
     const NUM = 'w-full bg-black border border-[#2b2822] rounded-lg px-2 py-1.5 text-sm text-neutral-100';
     return (
@@ -1461,6 +1474,7 @@ function App() {
             <div className="grid grid-cols-12 gap-3 items-end">
               <div className="col-span-12 sm:col-span-4"><label className={LBL}>Nombre</label><input value={prodForm.name} onChange={e => setProdForm({ ...prodForm, name: e.target.value })} className={INP} /></div>
               <div className="col-span-12 sm:col-span-3"><label className={LBL}>Categoría</label><select value={prodForm.category} onChange={e => setProdForm({ ...prodForm, category: e.target.value })} className={INP}>{PRODUCT_CATS.map(c => <option key={c}>{c}</option>)}</select></div>
+              {prodForm.category === 'Otros' && <div className="col-span-12 sm:col-span-4"><label className={LBL}>Escribí el objeto</label><input value={prodForm.detail} onChange={e => setProdForm({ ...prodForm, detail: e.target.value })} placeholder="Ej. Toalla, cargador, gorra…" className={INP} /></div>}
               <div className="col-span-4 sm:col-span-2"><label className={LBL}>Precio venta</label><input type="number" inputMode="numeric" value={prodForm.price} onChange={e => setProdForm({ ...prodForm, price: e.target.value })} className={INP} /></div>
               <div className="col-span-4 sm:col-span-1"><label className={LBL}>Stock</label><input type="number" inputMode="numeric" value={prodForm.stock} onChange={e => setProdForm({ ...prodForm, stock: e.target.value })} className={INP} /></div>
               <div className="col-span-4 sm:col-span-2"><label className={LBL}>Stock mín.</label><input type="number" inputMode="numeric" value={prodForm.min} onChange={e => setProdForm({ ...prodForm, min: e.target.value })} className={INP} /></div>
@@ -1485,7 +1499,7 @@ function App() {
                 </label>
                 <div className="col-span-9 sm:col-span-3 min-w-0">
                   {canEdit ? <input value={x.name} onChange={e => upd(x.id, { name: e.target.value })} className={NUM} /> : <p className="text-sm text-white truncate">{x.name}</p>}
-                  <p className="text-[11px] text-neutral-500 mt-1">{x.category || 'Otros'}{low && <span className="text-red-400 font-semibold"> · Stock bajo</span>}</p>
+                  <p className="text-[11px] text-neutral-500 mt-1">{prodCat(x)}{prodCat(x) === 'Otros' && x.detail ? ' · ' + x.detail : ''}{low && <span className="text-red-400 font-semibold"> · Stock bajo</span>}</p>
                 </div>
                 <div className="col-span-4 sm:col-span-1"><p className="text-[10px] text-neutral-500 sm:hidden">Stock</p>{canEdit ? <input type="number" value={x.stock ?? 0} onChange={e => upd(x.id, { stock: Number(e.target.value) })} className={NUM + (low ? ' !border-red-500' : '')} /> : <span className="text-sm text-white">{x.stock ?? 0}</span>}</div>
                 <div className="col-span-4 sm:col-span-2"><p className="text-[10px] text-neutral-500 sm:hidden">Stock mín.</p>{canEdit ? <input type="number" value={x.minStock ?? 0} onChange={e => upd(x.id, { minStock: Number(e.target.value) })} className={NUM} /> : <span className="text-sm text-white">{x.minStock ?? 0}</span>}</div>
@@ -2553,7 +2567,7 @@ function App() {
                         <span className={`text-sm font-semibold text-white ${pm.voided ? 'line-through' : ''}`}>{fmt(pm.amount)}</span>
                         <button onClick={() => editPayment(pm)} title="Modificar" className="p-1.5 rounded-lg border border-[#2b2822] text-neutral-400 hover:text-white"><Pencil className="w-3.5 h-3.5" /></button>
                         {pm.voided
-                          ? <button onClick={() => restorePayment(pm)} className="px-2 py-1.5 rounded-lg border border-[#2b2822] text-[11px] text-neutral-300 hover:text-white">Restaurar</button>
+                          ? <><button onClick={() => restorePayment(pm)} className="px-2 py-1.5 rounded-lg border border-[#2b2822] text-[11px] text-neutral-300 hover:text-white">Restaurar</button><button onClick={() => deletePayment(pm)} title="Eliminar" className="p-1.5 rounded-lg border border-[#2b2822] text-neutral-500 hover:text-red-500 hover:border-red-600"><Trash2 className="w-3.5 h-3.5" /></button></>
                           : <button onClick={() => voidPayment(pm)} className="px-2 py-1.5 rounded-lg border border-[#2b2822] text-[11px] text-neutral-400 hover:text-red-400 hover:border-red-600">Anular</button>}
                       </div>
                     </div>
@@ -3079,7 +3093,7 @@ function App() {
         {/* ===== MERCADERÍA ===== */}
         {(activeTab === 'mercaderia' || activeTab === 'inventario') && (() => {
           const canEdit = role === 'tecnico' || role === 'admin' || role === 'recepcion';
-          const list = products.filter(x => merCat === 'todas' || (x.category || 'Otros') === merCat);
+          const list = products.filter(x => merCat === 'todas' || prodCat(x) === merCat);
           const recent = [...sales].sort((x, y) => (y.date + (y.time || '')).localeCompare(x.date + (x.time || ''))).slice(0, 15);
           const bName = (id) => (barbers.find(x => x.id === id) || {}).name || '';
           const upd = (id, patch) => setProducts(products.map(q => q.id === id ? { ...q, ...patch } : q));
@@ -3087,7 +3101,7 @@ function App() {
             <div className="space-y-5">
               <div>
                 <h2 className="text-white">{activeTab === 'inventario' ? 'Inventario' : 'Ventas'}</h2>
-                <p className="text-xs text-neutral-500 mt-0.5">{activeTab === 'inventario' ? 'Productos de la barbería (bebidas, café, cuidado del cabello) con su precio.' : 'Registrá ventas a clientes y consumos de los barberos.'}</p>
+                <p className="text-xs text-neutral-500 mt-0.5">{activeTab === 'inventario' ? 'Productos de la barbería (bebidas, productos y otros objetos) con su precio.' : 'Registrá ventas a clientes y consumos de los barberos.'}</p>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 <div className={activeTab === 'mercaderia' ? 'lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start' : 'hidden'}>
