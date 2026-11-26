@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Blackmen">
 <meta name="application-name" content="Blackmen">
-<meta name="app-version" content="1.1.0">
+<meta name="app-version" content="1.2.0">
 <meta name="format-detection" content="telephone=no">
 <title>Blackmen Barbería</title>
 <link rel="icon" href="favicon.ico" sizes="any">
@@ -322,9 +322,12 @@ const INITIAL_PAYMENTS = [
   { id: 'p3', date: daysAgo(5), barberId: 'b2', clientName: 'Roberto Gómez', concept: 'Barba VIP', method: 'Tarjeta', amount: 12000, bookingId: '' },
 ];
 // ===== Versiones de la app / web (subí el número cada vez que publiques un cambio) =====
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const APP_BUILD = '2026-11-26';
 const CHANGELOG = [
+  { v: '1.2.0', date: '2026-11-26', notes: [
+    'Todos los usuarios pueden cambiar su propia contraseña desde el botón «Contraseña» de la cabecera.',
+  ] },
   { v: '1.1.0', date: '2026-11-26', notes: [
     'Recepción: salario base al agregar al equipo y aviso si la cuenta no está vinculada.',
     'Inventario: categorías Bebidas, Productos y Otros (con campo para escribir el objeto).',
@@ -762,6 +765,45 @@ function App() {
   const logout = () => {
     try { auth.signOut(); } catch (e) {}
     setIsAuthed(false); setLoginUser(''); setLoginPass(''); setAuthMsg(''); setLoginError(false);
+  };
+
+  // ===== Cambiar mi contraseña (todos los roles) =====
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwForm, setPwForm] = useState({ cur: '', next: '', rep: '' });
+  const [pwMsg, setPwMsg] = useState({ text: '', ok: false });
+  const [pwBusy, setPwBusy] = useState(false);
+  const closePw = () => { setPwOpen(false); setPwForm({ cur: '', next: '', rep: '' }); setPwMsg({ text: '', ok: false }); };
+  const changeMyPassword = async (e) => {
+    e.preventDefault();
+    const { cur, next, rep } = pwForm;
+    const bad = (text) => setPwMsg({ text, ok: false });
+    if (!cur || !next || !rep) return bad('Completá los tres campos.');
+    if (next.length < 6) return bad('La nueva contraseña debe tener al menos 6 caracteres.');
+    if (next !== rep) return bad('La nueva contraseña y su repetición no coinciden.');
+    if (next === cur) return bad('La nueva contraseña debe ser distinta de la actual.');
+    const meU = users.find(u => u.id === currentUserId);
+    if (!meU) return bad('No se encontró tu usuario. Volvé a iniciar sesión.');
+    setPwBusy(true); setPwMsg({ text: '', ok: false });
+    try {
+      const fu = auth.currentUser;
+      if (fu && fu.email) {
+        await fu.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(fu.email, cur));
+        await fu.updatePassword(next);
+      } else if ((meU.password || '') !== cur) {
+        throw { code: 'bm/wrong' };
+      }
+      setUsers(users.map(x => x.id === meU.id ? { ...x, password: next } : x));
+      setPwForm({ cur: '', next: '', rep: '' });
+      setPwMsg({ text: 'Contraseña cambiada. Usá la nueva la próxima vez que inicies sesión.', ok: true });
+    } catch (err) {
+      const c = err && err.code;
+      bad(['bm/wrong', 'auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials'].includes(c) ? 'La contraseña actual no es correcta.'
+        : c === 'auth/too-many-requests' ? 'Demasiados intentos. Esperá unos minutos y probá de nuevo.'
+        : c === 'auth/network-request-failed' ? 'Sin conexión a internet.'
+        : c === 'auth/requires-recent-login' ? 'Por seguridad, salí, volvé a iniciar sesión y probá de nuevo.'
+        : 'No se pudo cambiar la contraseña. Probá de nuevo.');
+    }
+    setPwBusy(false);
   };
 
   // Crear el acceso de Firebase para un usuario del sistema (sin cerrar la sesión actual)
@@ -1957,11 +1999,31 @@ function App() {
                 <p className="text-sm font-semibold text-neutral-200">{me ? me.username : ''}</p>
                 <p className="text-xs text-neutral-400">{ROLE_LABEL[role]}</p>
               </div>
+              <button onClick={() => setPwOpen(true)} title="Cambiar mi contraseña" className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2b2822] hover:border-[#d4af37] text-xs font-semibold text-neutral-200"><Lock className="w-4 h-4" /><span>Contraseña</span></button>
               <button onClick={logout} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 border border-red-600 text-xs font-semibold text-white"><LogOut className="w-4 h-4" /><span>Salir</span></button>
             </div>
           </div>
         </div>
       </header>
+
+      {pwOpen && (
+        <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4" onClick={closePw}>
+          <form onSubmit={changeMyPassword} onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-[#141414] border border-[#2b2822] rounded-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-white">Cambiar mi contraseña</h2>
+              <button type="button" onClick={closePw} className="text-neutral-500 hover:text-white text-lg leading-none" aria-label="Cerrar">×</button>
+            </div>
+            <div><label className={LBL}>Contraseña actual</label><input type="password" autoComplete="current-password" value={pwForm.cur} onChange={e => setPwForm({ ...pwForm, cur: e.target.value })} className={INP} /></div>
+            <div><label className={LBL}>Nueva contraseña (mín. 6 caracteres)</label><input type="password" autoComplete="new-password" value={pwForm.next} onChange={e => setPwForm({ ...pwForm, next: e.target.value })} className={INP} /></div>
+            <div><label className={LBL}>Repetir nueva contraseña</label><input type="password" autoComplete="new-password" value={pwForm.rep} onChange={e => setPwForm({ ...pwForm, rep: e.target.value })} className={INP} /></div>
+            {pwMsg.text && <p className={'text-xs rounded-lg px-3 py-2 border ' + (pwMsg.ok ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-red-400 bg-red-500/10 border-red-500/20')}>{pwMsg.text}</p>}
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={closePw} className="py-2.5 rounded-xl border border-[#2b2822] text-sm text-neutral-300 hover:text-white">{pwMsg.ok ? 'Cerrar' : 'Cancelar'}</button>
+              <button type="submit" disabled={pwBusy} className="py-2.5 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] disabled:opacity-60 text-black text-sm font-semibold">{pwBusy ? 'Guardando…' : 'Guardar'}</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* NAVEGACIÓN INFERIOR (celular) */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-black/95 backdrop-blur border-t border-[#2b2822] flex" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
