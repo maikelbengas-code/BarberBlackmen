@@ -71,6 +71,11 @@ input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-dat
   select { min-height: 44px; }
 }
 
+/* Menú inferior más grande y fácil de tocar */
+@media (max-width: 767px) {
+  nav.fixed.bottom-0 button { min-height: 64px; font-size: 11px; font-weight: 600; gap: 4px; }
+  nav.fixed.bottom-0 button svg { width: 24px; height: 24px; }
+}
 /* Al escribir, el menú inferior se oculta para no quedar sobre el teclado */
 @media (max-width: 767px) {
   body:has(input:focus:not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea:focus, select:focus) nav.fixed.bottom-0 { display: none; }
@@ -648,7 +653,7 @@ function App() {
           tx.set(usersRef, { value: [...cur, { id: 'u-' + Date.now(), username: name, email: mail, password: '', role: 'barbero', barberId: '', suspended: true, pending: true }], updatedAt: Date.now() }, { merge: true });
         });
       } catch (e) {}
-      setAuthMsg('Tu correo quedó registrado y está pendiente de aprobación. Pedile al administrador que te active en Configuración > Usuarios.');
+      setAuthMsg('Tu correo quedó registrado y está pendiente de aprobación. Pedile al técnico que te active en Configuración > Usuarios.');
       auth.signOut();
     }, 5000);
     return () => clearTimeout(t);
@@ -656,44 +661,59 @@ function App() {
 
   const failLogin = (msg) => { setAuthMsg(msg || ''); setLoginError(true); setShake(s => s + 1); };
 
+  // Convierte "usuario" o "correo" en el correo real vinculado
+  const resolveEmail = (id) => {
+    const v = (id || '').trim().toLowerCase();
+    if (!v) return { email: '' };
+    if (v.includes('@')) return { email: v };
+    const u = users.find(x => (x.username || '').trim().toLowerCase() === v);
+    if (!u) return { error: 'Ese usuario no existe.' };
+    if (u.suspended) return { error: u.pending ? 'Tu cuenta está pendiente de aprobación.' : 'Tu usuario está suspendido. Hablá con el técnico.' };
+    if (!u.email) return { user: u };
+    return { email: u.email.trim().toLowerCase(), user: u };
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (legacyMode) {
-      const u = users.find(x => x.username.toLowerCase() === loginUser.trim().toLowerCase() && x.password === loginPass && !x.suspended);
-      if (u) enterAs(u); else failLogin('Usuario o contraseña incorrectos.');
+    const id = loginEmail.trim().toLowerCase();
+    if (!id || !loginPass) return failLogin('Ingresá tu usuario o correo y la contraseña.');
+    const r = resolveEmail(id);
+    if (r.error) return failLogin(r.error);
+    if (!r.email && r.user) {
+      if (r.user.password === loginPass) { try { localStorage.setItem('bmx_last_email', id); } catch (er) {} enterAs(r.user); }
+      else failLogin('Usuario o contraseña incorrectos.');
       setLoginPass('');
       return;
     }
-    const email = loginEmail.trim().toLowerCase();
-    if (!email || !loginPass) return failLogin('Ingresá tu correo y contraseña.');
-    setLoginBusy(true); setAuthMsg(''); setLoginError(false);
+    const email = r.email;
     const pw = loginPass;
+    setLoginBusy(true); setAuthMsg(''); setLoginError(false);
     try {
       try {
         await auth.signInWithEmailAndPassword(email, pw);
       } catch (e1) {
-        // Primera vez del dueño: crear su acceso en Firebase
         const nf = ['auth/user-not-found', 'auth/invalid-credential', 'auth/invalid-login-credentials', 'auth/wrong-password'].includes(e1 && e1.code);
         if (nf && email === OWNER_EMAIL.toLowerCase() && pw === OWNER_PASS) {
           try { await auth.createUserWithEmailAndPassword(email, pw); } catch (e2) { throw e1; }
         } else throw e1;
       }
-      try { localStorage.setItem('bmx_last_email', email); } catch (er) {}
-      setLoginEmail(email); setChangingEmail(false);
+      try { localStorage.setItem('bmx_last_email', id); } catch (er) {}
+      setLoginEmail(id); setChangingEmail(false);
     } catch (err) {
       const c = err && err.code;
       failLogin(c === 'auth/too-many-requests' ? 'Demasiados intentos. Esperá unos minutos o restablecé tu contraseña.'
         : c === 'auth/network-request-failed' ? 'Sin conexión a internet.'
         : c === 'auth/operation-not-allowed' ? 'El acceso con correo no está activado en Firebase (Authentication > Sign-in method).'
-        : 'Correo o contraseña incorrectos.');
+        : 'Usuario o contraseña incorrectos.');
     }
     setLoginPass(''); setLoginBusy(false);
   };
 
   const resetPassword = async () => {
-    const email = loginEmail.trim().toLowerCase();
-    if (!email) return failLogin('Escribí tu correo primero.');
-    try { await auth.sendPasswordResetEmail(email); setLoginError(false); setAuthMsg('Te enviamos un correo para restablecer la contraseña. Revisá también spam.'); }
+    const r = resolveEmail(loginEmail);
+    if (r.error) return failLogin(r.error);
+    if (!r.email) return failLogin('Escribí tu usuario o correo primero.');
+    try { await auth.sendPasswordResetEmail(r.email); setLoginError(false); setAuthMsg('Te enviamos un correo para restablecer la contraseña. Revisá también spam.'); }
     catch (err) { failLogin('No se pudo enviar el correo. Revisá que esté bien escrito.'); }
   };
 
@@ -1198,7 +1218,7 @@ function App() {
   const updateUser = (id, patch) => {
     const u = users.find(x => x.id === id);
     if (!u) return;
-    if (role !== 'tecnico' && (u.role === 'tecnico' || patch.role === 'tecnico')) return;
+    if (role !== 'tecnico' && !(id === currentUserId && Object.keys(patch).every(k => k === 'photo'))) return;
     if (patch.role && u.role === 'tecnico' && patch.role !== 'tecnico' && users.filter(x => x.role === 'tecnico').length === 1) return alert('Debe existir al menos un Técnico principal.');
     if (patch.username !== undefined && users.some(x => x.id !== id && x.username.toLowerCase() === patch.username.trim().toLowerCase())) return;
     setUsers(users.map(x => x.id === id ? { ...x, ...patch } : x));
@@ -1206,8 +1226,8 @@ function App() {
   const deleteUser = (id) => {
     const u = users.find(x => x.id === id);
     if (!u) return;
-    if (role !== 'tecnico' && role !== 'admin') return;
-    if (role !== 'tecnico' && u.role === 'tecnico') return;
+    if (role !== 'tecnico') return;
+    if (role !== 'tecnico') return;
     if (id === currentUserId) return alert('No podés eliminar tu propio usuario.');
     if (u.role === 'tecnico' && users.filter(x => x.role === 'tecnico').length === 1) return alert('Debe existir al menos un Técnico principal.');
     if (confirm(`¿Eliminar el usuario ${u.username}?`)) setUsers(users.filter(x => x.id !== id));
@@ -1215,7 +1235,7 @@ function App() {
   const toggleSuspend = (id) => {
     const u = users.find(x => x.id === id);
     if (!u || id === currentUserId) return alert('No podés suspender tu propio usuario.');
-    if (role !== 'tecnico' && u.role === 'tecnico') return;
+    if (role !== 'tecnico') return;
     setUsers(users.map(x => x.id === id ? { ...x, suspended: !x.suspended, pending: false } : x));
   };
   const addUser = () => {
@@ -1224,7 +1244,7 @@ function App() {
     const em = (newUser.email || '').trim().toLowerCase();
     if (em && newUser.password.length < 6) return alert('Con correo, la contraseña debe tener al menos 6 caracteres.');
     if (em && users.some(x => (x.email || '').toLowerCase() === em)) return alert('Ese correo ya está asignado a otro usuario.');
-    if (role !== 'tecnico' && newUser.role === 'tecnico') return;
+    if (role !== 'tecnico') return;
     if (users.some(x => x.username.toLowerCase() === name.toLowerCase())) return alert('Ese usuario ya existe.');
     if (em) createAccess({ email: em, password: newUser.password });
     setUsers([...users, { id: `u-${Date.now()}`, username: name, email: em, password: newUser.password, role: newUser.role, barberId: newUser.barberId || '' }]);
@@ -1317,7 +1337,7 @@ function App() {
       ['Clientes atendidos', st.clients],
       ['Servicios realizados', st.services],
       ...(role === 'barbero' ? [] : [['Producción', fmt(st.total)]]),
-      [role === 'barbero' ? 'Mis ganancias (' + st.pc + '%)' : 'Comisión (' + st.pc + '%)', fmt(st.share)],
+      [role === 'barbero' ? 'Mis ganancias' : 'Comisión (' + st.pc + '%)', fmt(st.share)],
       ['Productos vendidos', st.soldQty + (st.soldQty && role !== 'barbero' ? ' · ' + fmt(st.soldTotal) : '')],
       ['Consumo personal', '- ' + fmt(st.cons)],
     ];
@@ -1350,7 +1370,7 @@ function App() {
     const T = (k) => rows.reduce((a, r) => a + r.s[k], 0);
     const logo = new URL('logo.png', location.href).href;
     const own = role === 'barbero';
-    const tr = rows.map(r => '<tr><td class="n">' + esc(r.b.name) + '</td><td>' + r.s.clients + '</td><td>' + r.s.services + '</td>' + (own ? '' : '<td>' + fmt(r.s.total) + '</td>') + '<td>' + r.s.pc + '%</td><td>' + fmt(r.s.share) + '</td><td>' + r.s.soldQty + '</td><td>- ' + fmt(r.s.cons) + '</td><td class="g">' + fmt(r.s.net) + '</td></tr>').join('');
+    const tr = rows.map(r => '<tr><td class="n">' + esc(r.b.name) + '</td><td>' + r.s.clients + '</td><td>' + r.s.services + '</td>' + (own ? '' : '<td>' + fmt(r.s.total) + '</td>') + (own ? '' : '<td>' + r.s.pc + '%</td>') + '<td>' + fmt(r.s.share) + '</td><td>' + r.s.soldQty + '</td><td>- ' + fmt(r.s.cons) + '</td><td class="g">' + fmt(r.s.net) + '</td></tr>').join('');
     const kpi = (own ? [['Clientes atendidos', T('clients')], ['Servicios realizados', T('services')], ['Mis ganancias', fmt(T('share'))], ['Ganancia neta', fmt(T('net'))]] : [['Clientes atendidos', T('clients')], ['Servicios realizados', T('services')], ['Producción total', fmt(T('total'))], ['Comisiones', fmt(T('share'))]]).map(k => '<div class="k"><span>' + k[0] + '</span><b>' + k[1] + '</b></div>').join('');
     const html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte ' + esc(label) + ' - Blackmen Barbería</title><style>' +
       '@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0;font-family:Inter,Helvetica,Arial,sans-serif;color:#151515;background:#fff}' +
@@ -1360,8 +1380,8 @@ function App() {
       'tfoot td{background:#000!important;color:#fff;font-weight:700;border:0}tfoot td.g{color:#d4af37}.f{margin-top:22px;padding-top:10px;border-top:1px solid #d9d6cf;font-size:10.5px;color:#78716c;display:flex;justify-content:space-between}' +
       '.btn{position:fixed;right:18px;bottom:18px;background:#d4af37;color:#000;border:0;border-radius:10px;padding:12px 20px;font-weight:700;cursor:pointer}@media print{.btn{display:none}}</style></head><body>' +
       '<div class="h"><img src="' + logo + '" alt="Blackmen Barbería" onerror="this.style.display=\'none\'"><div class="t"><h1>Reporte de rendimiento del equipo</h1><p>' + esc(label) + '</p></div></div>' +
-      '<div class="w"><div class="ks">' + kpi + '</div><table><thead><tr><th>Barbero</th><th>Clientes</th><th>Servicios</th>' + (own ? '' : '<th>Producción</th>') + '<th>Com. %</th><th>Comisión</th><th>Prod. vendidos</th><th>Consumo</th><th>Neto</th></tr></thead><tbody>' + tr +
-      '</tbody><tfoot><tr><td class="n">TOTAL</td><td>' + T('clients') + '</td><td>' + T('services') + '</td>' + (own ? '' : '<td>' + fmt(T('total')) + '</td>') + '<td></td><td>' + fmt(T('share')) + '</td><td>' + T('soldQty') + '</td><td>- ' + fmt(T('cons')) + '</td><td class="g">' + fmt(T('net')) + '</td></tr></tfoot></table>' +
+      '<div class="w"><div class="ks">' + kpi + '</div><table><thead><tr><th>Barbero</th><th>Clientes</th><th>Servicios</th>' + (own ? '' : '<th>Producción</th>') + '' + (own ? '' : '<th>Com. %</th>') + '<th>' + (own ? 'Mis ganancias' : 'Comisión') + '</th><th>Prod. vendidos</th><th>Consumo</th><th>Neto</th></tr></thead><tbody>' + tr +
+      '</tbody><tfoot><tr><td class="n">TOTAL</td><td>' + T('clients') + '</td><td>' + T('services') + '</td>' + (own ? '' : '<td>' + fmt(T('total')) + '</td>') + (own ? '' : '<td></td>') + '<td>' + fmt(T('share')) + '</td><td>' + T('soldQty') + '</td><td>- ' + fmt(T('cons')) + '</td><td class="g">' + fmt(T('net')) + '</td></tr></tfoot></table>' +
       '<div class="f"><span>Blackmen Barbería · Más que un corte, elevamos tu estilo</span><span>Generado el ' + new Date().toLocaleString('es-PY') + '</span></div></div>' +
       '<button class="btn" onclick="window.print()">Imprimir / Guardar PDF</button></body></html>';
     const w = window.open('', '_blank');
@@ -1664,7 +1684,7 @@ function App() {
         {withCards && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {role !== 'barbero' && <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Cobrado en servicios</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(total)}</p><p className="text-[10px] text-neutral-600 mt-1">{pays.length} cobros</p></div>}
-            <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">Mi parte ({pc}%)</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(share)}</p></div>
+            <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3.5"><p className="text-[11px] text-neutral-500">{role === 'barbero' ? 'Mis ganancias' : 'Mi parte (' + pc + '%)'}</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(share)}</p></div>
             <div className="bg-red-500/5 border border-red-500/30 rounded-xl p-3.5"><p className="text-[11px] text-red-400">Mis gastos (consumos)</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">- {fmt(consT)}</p></div>
             <div className="bg-emerald-500/5 border border-emerald-500/30 rounded-xl p-3.5"><p className="text-[11px] text-emerald-400">Ganancia neta</p><p className="text-base sm:text-xl font-bold text-white mt-1 break-words">{fmt(share - consT)}</p></div>
           </div>
@@ -1805,10 +1825,10 @@ function App() {
                   </div>
                 ) : (
                   <div>
-                    <label className="block text-xs text-neutral-400 mb-2">Correo</label>
+                    <label className="block text-xs text-neutral-400 mb-2">Usuario o correo</label>
                     <div className="relative">
                       <User className="w-4 h-4 absolute left-4 top-3.5 text-neutral-500" />
-                      <input type="email" autoComplete="email" inputMode="email" placeholder="tucorreo@gmail.com" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className={fieldCls} />
+                      <input type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" placeholder="Tu usuario o correo" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className={fieldCls} />
                     </div>
                   </div>
                 )}
@@ -1827,7 +1847,7 @@ function App() {
                 <button type="submit" disabled={loginBusy} className="w-full py-3 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] disabled:opacity-60 text-black font-semibold text-sm">{loginBusy ? 'Ingresando…' : 'Ingresar'}</button>
                 <div className="flex items-center justify-between gap-3 text-[11px]">
                   {!legacyMode ? <button type="button" onClick={resetPassword} className="text-neutral-400 hover:text-white">¿Olvidaste tu contraseña?</button> : <span />}
-                  <button type="button" onClick={() => { setLegacyMode(!legacyMode); setAuthMsg(''); setLoginError(false); }} className="text-neutral-600 hover:text-neutral-300">{legacyMode ? 'Entrar con correo' : 'Entrar con usuario'}</button>
+                  <span />
                 </div>
               </form>
 
@@ -3069,15 +3089,15 @@ function App() {
                   <p className="text-xs text-neutral-500 mt-0.5">{(barbers.find(x => x.id === myBarberId) || {}).name}</p>
                 </div>
               </div>
-              <div className="inline-flex max-w-full overflow-x-auto no-scrollbar self-start sm:self-auto p-0.5 rounded-lg bg-[#141414] border border-[#2b2822]">
+              <div className="flex w-full sm:w-auto sm:inline-flex gap-1 p-1 rounded-xl bg-[#141414] border border-[#2b2822]">
                 {[['hoy', 'Hoy'], ['semana', 'Semana'], ['quincena', 'Quincena'], ['mes', 'Mes'], ['ano', 'Año']].map(([k, l]) => (
-                  <button key={k} onClick={() => setMyPeriod(k)} className={`px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap ${myPeriod === k ? 'bg-[#d4af37] text-black' : 'text-neutral-400 hover:text-white'}`}>{l}</button>
+                  <button key={k} onClick={() => setMyPeriod(k)} className={`flex-1 sm:flex-none px-1 sm:px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap ${myPeriod === k ? 'bg-[#d4af37] text-black' : 'text-neutral-400 hover:text-white'}`}>{l}</button>
                 ))}
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400"><span>Ver un solo día:</span><input type="date" value={myDay} onChange={e => setMyDay(e.target.value)} className="bg-[#141414] border border-[#2b2822] rounded-lg px-2.5 py-1 text-[11px] text-neutral-200 outline-none focus:border-[#d4af37]" />{myDay && <button type="button" onClick={() => setMyDay('')} className="text-[11px] hover:text-white">Quitar día</button>}</div>
+            <div className="bg-[#141414] border border-[#2b2822] rounded-xl p-3 flex items-center gap-2"><span className="text-xs text-neutral-400 shrink-0">Ver un día:</span><input type="date" value={myDay} onChange={e => setMyDay(e.target.value)} className="flex-1 min-w-0 bg-black border border-[#2b2822] rounded-lg px-3 py-2.5 text-sm text-neutral-100 outline-none focus:border-[#d4af37]" />{myDay && <button type="button" onClick={() => setMyDay('')} className="shrink-0 px-3 py-2.5 rounded-lg border border-[#2b2822] text-xs text-neutral-300">Quitar</button>}</div>
             <div className="flex items-center justify-between gap-3"><h3 className="text-white">Mi resumen y metas</h3>
-              <button type="button" onClick={() => openReport([myBarberId], myPeriod, myDay)} className="px-3 py-2 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-xs font-semibold">Descargar mi reporte</button></div>
+              <button type="button" onClick={() => openReport([myBarberId], myPeriod, myDay)} className="px-4 py-3 sm:py-2 rounded-xl bg-[#d4af37] hover:bg-[#e3c25b] text-black text-sm sm:text-xs font-semibold">Descargar mi reporte</button></div>
             {barberSummary(myBarberId, myPeriod, myDay, true)}
             {barberDetail(myBarberId, myPeriod, true, myDay)}
           </div>
@@ -3154,7 +3174,7 @@ function App() {
             </div>
           </div>
           
-          {(role === 'tecnico' || role === 'admin') && (
+          {(role === 'tecnico') && (
           <div className="space-y-6">
             <div>
               <h2 className="text-white">Usuarios y roles</h2>
