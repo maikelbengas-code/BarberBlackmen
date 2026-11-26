@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Blackmen">
 <meta name="application-name" content="Blackmen">
-<meta name="app-version" content="1.2.0">
+<meta name="app-version" content="1.2.1">
 <meta name="format-detection" content="telephone=no">
 <title>Blackmen Barbería</title>
 <link rel="icon" href="favicon.ico" sizes="any">
@@ -322,9 +322,12 @@ const INITIAL_PAYMENTS = [
   { id: 'p3', date: daysAgo(5), barberId: 'b2', clientName: 'Roberto Gómez', concept: 'Barba VIP', method: 'Tarjeta', amount: 12000, bookingId: '' },
 ];
 // ===== Versiones de la app / web (subí el número cada vez que publiques un cambio) =====
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const APP_BUILD = '2026-11-26';
 const CHANGELOG = [
+  { v: '1.2.1', date: '2026-11-26', notes: [
+    'Celular: menú de tres rayas con usuario, Cambiar contraseña y Salir (la versión web no cambia).',
+  ] },
   { v: '1.2.0', date: '2026-11-26', notes: [
     'Todos los usuarios pueden cambiar su propia contraseña desde el botón «Contraseña» de la cabecera.',
   ] },
@@ -768,6 +771,7 @@ function App() {
   };
 
   // ===== Cambiar mi contraseña (todos los roles) =====
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [pwForm, setPwForm] = useState({ cur: '', next: '', rep: '' });
   const [pwMsg, setPwMsg] = useState({ text: '', ok: false });
@@ -1999,12 +2003,31 @@ function App() {
                 <p className="text-sm font-semibold text-neutral-200">{me ? me.username : ''}</p>
                 <p className="text-xs text-neutral-400">{ROLE_LABEL[role]}</p>
               </div>
-              <button onClick={() => setPwOpen(true)} title="Cambiar mi contraseña" className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2b2822] hover:border-[#d4af37] text-xs font-semibold text-neutral-200"><Lock className="w-4 h-4" /><span>Contraseña</span></button>
-              <button onClick={logout} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 border border-red-600 text-xs font-semibold text-white"><LogOut className="w-4 h-4" /><span>Salir</span></button>
+              <button onClick={() => setPwOpen(true)} title="Cambiar mi contraseña" className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2b2822] hover:border-[#d4af37] text-xs font-semibold text-neutral-200"><Lock className="w-4 h-4" /><span>Contraseña</span></button>
+              <button onClick={logout} className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 border border-red-600 text-xs font-semibold text-white"><LogOut className="w-4 h-4" /><span>Salir</span></button>
+              {/* Celular: menú de tres rayas */}
+              <button type="button" onClick={() => { setUserMenuOpen(o => !o); tap(); }} aria-label="Menú de usuario" className="md:hidden flex items-center justify-center rounded-lg border border-[#2b2822] text-neutral-200"><MoreIcon className="w-6 h-6" /></button>
             </div>
           </div>
         </div>
       </header>
+
+      {userMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-[65] bg-black/60" onClick={() => setUserMenuOpen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ top: 'calc(env(safe-area-inset-top, 0px) + 4.25rem)' }} className="absolute right-3 w-64 bg-[#141414] border border-[#2b2822] rounded-2xl shadow-2xl p-2 space-y-1">
+            <div className="flex items-center gap-3 px-3 py-3 border-b border-[#2b2822]">
+              <Avatar src={(me && me.photo) || ((barbers.find(b => me && b.id === me.barberId) || {}).photo)} name={me ? me.username : ''} size={40} />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{me ? me.username : ''}</p>
+                <p className="text-xs text-neutral-400 truncate">{ROLE_LABEL[role]}</p>
+              </div>
+            </div>
+            <button type="button" onClick={() => { setUserMenuOpen(false); setPwOpen(true); }} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-neutral-200 hover:bg-white/5"><Lock className="w-5 h-5" />Cambiar contraseña</button>
+            <button type="button" onClick={() => { setUserMenuOpen(false); logout(); }} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-red-400 hover:bg-red-500/10"><LogOut className="w-5 h-5" />Salir</button>
+            <p className="text-center text-[10px] text-neutral-600 pt-1">Versión {APP_VERSION}</p>
+          </div>
+        </div>
+      )}
 
       {pwOpen && (
         <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4" onClick={closePw}>
